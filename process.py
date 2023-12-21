@@ -10,5 +10,8 @@
 #           Evening     (18:00-00:00)
 #           Night       (00:00-06:00)
 
+def main(sparksession,df_filtered_tweets):
+#TODO write actual code
+    return df_filtered_tweets
 
 #expected output df structure:
