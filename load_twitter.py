@@ -2,9 +2,9 @@ from pyspark.sql import SparkSession
 from pyspark.sql.functions import col
 
 
-spark = SparkSession.builder.getOrCreate()
+# spark = SparkSession.builder.getOrCreate()
 
-PATH = '/data/doina/Twitter-Archive.org/2017-01/01/*/*.json.bz2'
+# PATH = '/data/doina/Twitter-Archive.org/2017-01/01/*/*.json.bz2'
 
 
 def get_relevant_tweets_for_day(sparksession, path):
@@ -22,18 +22,7 @@ def get_relevant_tweets_for_day(sparksession, path):
                     'user.time_zone',
                     'user.utc_offset')
 
-    # Filter for only the langs that we support
-    supported_langs = ['nl', 'en']
-    tweets = all_tweets.filter(col('lang').rlike('^' + '|'.join(supported_langs) + '$'))
-
-    # Filter for only users that tweeted multiple times during the day (>5)
-    user_tweet_counts = tweets.groupBy('user_id').count().filter(col('count') > 5)
-
-    # TODO: Filter out the tweets that are not spread out enough through the day
-
-    # Only take the tweets from users who tweeted enough times
-    tweets_2 = tweets.join(user_tweet_counts, on='user_id')
-    return tweets_2, user_tweets_count
+    return all_tweets
 
 
 if __name__ == '__main__':

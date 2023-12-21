@@ -8,16 +8,16 @@ from pyspark.sql import SparkSession
 spark = SparkSession.builder.getOrCreate()
 
 #source files to use
-#PATHS = ""
+PATHS = '/data/doina/Twitter-Archive.org/2017-01/01/*/*.json.bz2'
 
 #load the paths
-df_loaded = load_twitter.get_relevant_tweets_for_day(spark, load_twitter.PATH)
+df_loaded = load_twitter.get_relevant_tweets_for_day(spark, PATHS)
 
 #filter users we need
-df_filtered = filter_tweets.main(df_loaded)
+df_filtered = filter_tweets.main(spark,df_loaded)
 
 #process the filtered data
-df_processed = process.main(df_filtered)
+df_processed = process.main(spark,df_filtered)
 
 #visualise results
-visualise.main(df_processed)
+visualise.main(spark,df_processed)
