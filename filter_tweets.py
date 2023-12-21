@@ -21,6 +21,7 @@ def main(sparksession,all_tweets):
     tweets = all_tweets.filter(col('lang').rlike('^' + '|'.join(supported_langs) + '$'))
 
     # Filter for only users that tweeted multiple times during the day (>3)
+    # TODO expand to work across multiple days (group by user and day)
     user_tweet_counts = tweets.groupBy('user_id').count().filter(col('count') > 3)
 
     # TODO: Filter out the tweets that are not spread out enough through the day
