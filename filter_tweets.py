@@ -18,6 +18,7 @@
 def main(sparksession,all_tweets):
     # Filter for only the langs that we support
     supported_langs = ['nl', 'en']
+    # TODO: allow language tags like nl-be, en-us and en-gb
     tweets = all_tweets.filter(col('lang').rlike('^' + '|'.join(supported_langs) + '$'))
 
     # Filter for only users that tweeted multiple times during the day (>3)
