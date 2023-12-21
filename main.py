@@ -1,7 +1,7 @@
 import load_twitter
 import filter_tweets
 import process
-import visualise
+import visualise_analyse
 
 from pyspark.sql import SparkSession
 
@@ -9,6 +9,9 @@ spark = SparkSession.builder.getOrCreate()
 
 #source files to use
 PATHS = '/data/doina/Twitter-Archive.org/2017-01/01/*/*.json.bz2'
+
+#output folder path
+OUTPUT = '/project' 
 
 #load the paths
 df_loaded = load_twitter.get_relevant_tweets_for_day(spark, PATHS)
@@ -20,4 +23,5 @@ df_filtered = filter_tweets.main(spark,df_loaded)
 df_processed = process.main(spark,df_filtered)
 
 #visualise results
-visualise.main(spark,df_processed)
+visualise_analyse.main(spark,df_processed,OUTPUT)
+
