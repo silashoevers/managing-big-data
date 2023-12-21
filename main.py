@@ -1,5 +1,5 @@
 import load_twitter
-import filter
+import filter_tweets
 import process
 import visualise
 
@@ -14,7 +14,7 @@ spark = SparkSession.builder.getOrCreate()
 df_loaded = load_twitter.get_relevant_tweets_for_day(spark, load_twitter.PATH)
 
 #filter users we need
-df_filtered = filter.main(df_loaded)
+df_filtered = filter_tweets.main(df_loaded)
 
 #process the filtered data
 df_processed = process.main(df_filtered)
