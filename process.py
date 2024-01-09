@@ -1,3 +1,4 @@
+from pyspark.sql.functions import timestamp_seconds, col, hour, minute, second
 #expected input df structure:
 # .select('id',
 #                     'text',
@@ -22,9 +23,39 @@
 #           Night       (00:00-06:00)
 
 
-def main(sparksession,df_filtered_tweets):
-#TODO write actual code
-    return df_filtered_tweets
+def add_time_window(sparksession, df_filtered_tweets):
+    # TODO move this to filter_tweets.py
+
+    sparksession.conf.set("spark.sql.session.timeZone", "UTC")
+
+    # Filter based on timestamp being not null
+    df_filtered_tweets = df_filtered_tweets.filter(col('utc_offset').isNotNull())
+
+    # Convert into local time timestamps
+    df_timestamps = df_filtered_tweets.withColumn('ts', \
+            timestamp_seconds(col('timestamp_ms') / 1e3 + col('utc_offset'))) 
+
+
+    # Extract the hour
+    df_timestamps = df_timestamps.withColumns({ 'hour': hour('ts'), 'minute': minute('ts'), 'second': second('ts') })
+
+    # Add time-of-day as boolean flags
+    df_timestamp_buckets = df_timestamps.withColumns( {'night': col('hour') < 6,
+        'morning': (6 <= col('hour')) & (col('hour') < 12),
+        'afternoon': (12 <= col('hour')) & (col('hour') < 18),
+        'evening': 18 <= col('hour')})
+
+    df_timestamp_buckets.sort('timestamp_ms', ascending=True).show()
+    return df_timestamp_buckets
+
+def process_spelling_mistakes(sparksession, df_time_added):
+    # Todo
+    return df_time_added
+
+def main(sparksession, df_filtered_tweets):
+    df_time_added = add_time_window(sparksession, df_filtered_tweets)
+    df_spelling_processed = process_spelling_mistakes(sparksession, df_time_added)
+    return df_spelling_processed
 
 #expected output df structure:
 # ('user_id', 
