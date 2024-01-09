@@ -1,3 +1,4 @@
+from pyspark.sql.functions import col
 #expected input df structure:
 # .select('id',
 #                     'text',
