@@ -10,7 +10,7 @@ from pyspark.sql.functions import col
 def get_relevant_tweets_for_day(sparksession, path):
     """
     """
-    all_tweets = spark.read.json(path) \
+    all_tweets = sparksession.read.json(path) \
             .select('id',
                     'text',
                     'lang',
