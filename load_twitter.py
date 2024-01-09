@@ -10,7 +10,7 @@ PATH = '/data/doina/Twitter-Archive.org/2017-01/01/*/*.json.bz2'
 def get_relevant_tweets_for_day(sparksession, path):
     """
     """
-    all_tweets = spark.read.json(path) \
+    all_tweets = sparksession.read.json(path) \
             .select('id',
                     'text',
                     'lang',
