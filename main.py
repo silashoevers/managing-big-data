@@ -8,7 +8,7 @@ from pyspark.sql import SparkSession
 spark = SparkSession.builder.getOrCreate()
 
 #source files to use
-PATHS = '/data/doina/Twitter-Archive.org/2017-01/01/*/*.json.bz2'
+PATHS = '/data/doina/Twitter-Archive.org/2017-01/01/00/*.json.bz2'
 
 #output folder path
 OUTPUT = '/project' 

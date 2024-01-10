@@ -1,3 +1,4 @@
+from pyspark.sql.functions import col, timestamp_seconds, hour, minute, second
 #expected input df structure:
 # .select('id',
 #                     'text',
@@ -14,6 +15,31 @@
 #   The user tweeted at least 3 times that day
 #   Those tweets were at least 4 hours apart each
 #   The tweets were in English or Dutch
+#   The tweets contain timezone information
+#
+# Additionally adds time-of-day information as additional columns
+
+def add_time_window(sparksession, df_filtered_tweets):
+    sparksession.conf.set("spark.sql.session.timeZone", "UTC")
+
+    # Filter based on timestamp being not null
+    df_filtered_tweets = df_filtered_tweets.filter(col('utc_offset').isNotNull())
+
+    # Convert into local time timestamps
+    df_timestamps = df_filtered_tweets.withColumn('ts', \
+            timestamp_seconds(col('timestamp_ms') / 1e3 + col('utc_offset'))) 
+
+
+    # Extract the hour
+    df_timestamps = df_timestamps.withColumns({ 'hour': hour('ts'), 'minute': minute('ts'), 'second': second('ts') })
+
+    # Add time-of-day as boolean flags
+    df_timestamp_buckets = df_timestamps.withColumns( {'night': col('hour') < 6,
+        'morning': (6 <= col('hour')) & (col('hour') < 12),
+        'afternoon': (12 <= col('hour')) & (col('hour') < 18),
+        'evening': 18 <= col('hour')})
+    return df_timestamp_buckets
+
 
 def main(sparksession,all_tweets):
     # Filter for only the langs that we support
@@ -29,7 +55,10 @@ def main(sparksession,all_tweets):
 
     # Only take the tweets from users who tweeted enough times
     tweets_2 = tweets.join(user_tweet_counts, on='user_id').withColumnRenamed('count','user_count')
-    return tweets_2
+
+    # Add time window information
+    tweets_3 = add_time_window(sparksession, tweets_2)
+    return tweets_3
 
 #expected output df structure:
 # .select('id',
@@ -42,4 +71,12 @@ def main(sparksession,all_tweets):
 #                     'timestamp_ms',
 #                     'user.time_zone',
 #                     'user.utc_offset'
-#                     'user_count')
+#                     'user_count',)
+#                     'ts'
+#                     'hour'
+#                     'minute'
+#                     'second'
+#                     'night'
+#                     'morning'
+#                     'afternoon'
+#                     'evening'
