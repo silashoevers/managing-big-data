@@ -235,9 +235,11 @@ def spell_check_word(language_code, word,sparksession):
         actual = df_word.first()['dist_count_word'][2]
         df_mistakes_known = df_mistakes_known.withColumn('dist_count_word',when(col("spelling")==word,(dist,count,actual)).otherwise(col('dist_count_word')))
         
-    #return the edit distance
+    #return distance and known mistakes df
     return dist
 
+
+    
 
 #Maps word spell checker over tweet text, then returns number and the percentage of words misspelled
 def spell_check_tweet(language_code, text,sparksession):    
