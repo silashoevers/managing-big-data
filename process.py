@@ -1,4 +1,4 @@
-from pyspark.sql.functions import timestamp_seconds, col, hour, minute, second
+from pyspark.sql.functions import col
 #expected input df structure:
 # .select('id',
 #                     'text',
@@ -10,7 +10,15 @@ from pyspark.sql.functions import timestamp_seconds, col, hour, minute, second
 #                     'timestamp_ms',
 #                     'user.time_zone',
 #                     'user.utc_offset'
-#                     'user_count')
+#                     'user_count',
+#                     'ts',
+#                     'hour',
+#                     'minute',
+#                     'second',
+#                     'night',
+#                     'morning',
+#                     'afternoon',
+#                     'evening')
 
 #receives df with filtered tweets and:
 #   1) Checks number of spelling mistakes in each tweet
@@ -159,8 +167,7 @@ def process_spelling_mistakes(sparksession, df_time_added):
     return df_time_added
 
 def main(sparksession, df_filtered_tweets):
-    df_time_added = add_time_window(sparksession, df_filtered_tweets)
-    df_spelling_processed = process_spelling_mistakes(sparksession, df_time_added)
+    df_spelling_processed = process_spelling_mistakes(sparksession, df_filtered_tweets)
     return df_spelling_processed
 
 #expected output df structure:
@@ -175,6 +182,8 @@ def main(sparksession, df_filtered_tweets):
 #   'second'
 #   'time_bucket'
 #   'lang')
+#
+# Maybe we can keep the information such as 'hour', 'minute' etc. so we have to possibility to graph spelling mistakes throughout time or something later
 
 #testing
 print("should be 0 :"+ str(spell_check_word('en',"five",spark)))
