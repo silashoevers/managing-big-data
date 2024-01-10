@@ -1,4 +1,6 @@
-from pyspark.sql.functions import col, timestamp_seconds, hour, minute, second
+import pandas as pd
+from pyspark.sql.functions import col, timestamp_seconds, hour, minute, second, pandas_udf
+from pyspark.sql.types import IntegerType
 #expected input df structure:
 # .select('id',
 #                     'text',
@@ -11,19 +13,21 @@ from pyspark.sql.functions import col, timestamp_seconds, hour, minute, second
 #                     'user.time_zone',
 #                     'user.utc_offset')
 
-#receives df with tweets and filters out the users and tweets where:
-#   The user tweeted at least 3 times that day
-#   Those tweets were at least 4 hours apart each
+#receives df with tweets and filters for tweets where:
+#   The user tweeted in at least 3 time buckets that day (night/morning/afternoon/evening)
 #   The tweets were in English or Dutch
 #   The tweets contain timezone information
 #
 # Additionally adds time-of-day information as additional columns
 
+
+def filter_has_timezone(tweets):
+    # Filter based on utc_offset being not null
+    return tweets.filter(col('utc_offset').isNotNull())
+
+
 def add_time_window(sparksession, df_filtered_tweets):
     sparksession.conf.set("spark.sql.session.timeZone", "UTC")
-
-    # Filter based on timestamp being not null
-    df_filtered_tweets = df_filtered_tweets.filter(col('utc_offset').isNotNull())
 
     # Convert into local time timestamps
     df_timestamps = df_filtered_tweets.withColumn('ts', \
@@ -41,24 +45,38 @@ def add_time_window(sparksession, df_filtered_tweets):
     return df_timestamp_buckets
 
 
-def main(sparksession,all_tweets):
-    # Filter for only the langs that we support
+def filter_languages(tweets):
     supported_langs = ['nl', 'en']
     # TODO: allow language tags like nl-be, en-us and en-gb
-    tweets = all_tweets.filter(col('lang').rlike('^' + '|'.join(supported_langs) + '$'))
+    tweets = tweets.filter(col('lang').rlike('^' + '|'.join(supported_langs) + '$'))
+    return tweets
 
-    # Filter for only users that tweeted multiple times during the day (>3)
-    # TODO expand to work across multiple days (group by user and day)
-    user_tweet_counts = tweets.groupBy('user_id').count().filter(col('count') > 3)
 
-    # TODO: Filter out the tweets that are not spread out enough through the day
+@pandas_udf(IntegerType())
+def filter_enough_time_windows(night: pd.Series, morning: pd.Series, afternoon: pd.Series, evening: pd.Series) -> bool:
+    return [night.any(), morning.any(), afternoon.any(), evening.any()].count(True)
 
-    # Only take the tweets from users who tweeted enough times
-    tweets_2 = tweets.join(user_tweet_counts, on='user_id').withColumnRenamed('count','user_count')
+
+
+def filter_user_tweeting_enough(tweets, min_num_windows = 3):
+    user_timewindow_counts = tweets.groupBy('user_id').agg(filter_enough_time_windows(tweets.night, tweets.morning, tweets.afternoon, tweets.evening).alias('time_window_count'))
+
+    user_timewindow_counts = user_timewindow_counts.filter(col('time_window_count') >= min_num_windows)
+    return tweets.join(user_timewindow_counts, on='user_id')
+
+
+def main(sparksession, tweets):
+    # Filter for only the langs that we support
+    tweets = filter_languages(tweets)
 
     # Add time window information
-    tweets_3 = add_time_window(sparksession, tweets_2)
-    return tweets_3
+    tweets = filter_has_timezone(tweets)
+    tweets = add_time_window(sparksession, tweets)
+
+    # Filter for only users that tweeted multiple times during the day (>3)
+    # Note: does not work for processing different days
+    tweets = filter_user_tweeting_enough(tweets)
+    return tweets
 
 #expected output df structure:
 # .select('id',
