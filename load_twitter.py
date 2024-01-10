@@ -4,7 +4,7 @@ from pyspark.sql.functions import col
 
 # spark = SparkSession.builder.getOrCreate()
 
-# PATH = '/data/doina/Twitter-Archive.org/2017-01/01/*/*.json.bz2'
+PATH = '/data/doina/Twitter-Archive.org/2017-01/01/*/*.json.bz2'
 
 
 def get_relevant_tweets_for_day(sparksession, path):

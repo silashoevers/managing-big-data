@@ -14,17 +14,51 @@
 #receives df with filtered tweets and:
 #   1) Checks number of spelling mistakes in each tweet
 #   2) Calculates spelling mistakes as % of words in the tweet
-#   3) Add tweet time window
-#       Time windows: 
-#           Morning     (06:00-12:00)
-#           Afternoon   (12:00-18:00)
-#           Evening     (18:00-00:00)
-#           Night       (00:00-06:00)
+
+from textblob import TextBlob
+
+def spell_check_word(language_code, word, df_mistakes_known):
+    #check if the word is in the known mistakes
+    df_word = df_mistakes_known.filter(df_mistakes_known.lang_id == 'nl').filter(df_mistakes_known.word == word)
+    dist = 0
+    if df_word.isEmpty():
+        #if it is not 
+        #TODO figure out how to find the closest word (binary search by letter? since NLTK has bigrams)
+        #find the closest word
+
+        #determine the distance
+        #TODO pick distance measure
+        if dist>0:
+        #if distance > 0, add the new spelling to the df with value and count
+
+    else:
+        #if it is increase the associated count
+        dist = df_word.first()['dist_count'][0]
+        count = df_word.first()['dist_count'][1] + 1
+        #TODO figure out how to update a single value in a dataframe
+
+    #return distance and known mistakes df
+    return dist, df_mistakes_known
+
+def spell_check_tweet(language_code, text, df_mistakes_known):
+    #TODO map word spell checker over tweet text, then return total count
+    return total_dist,df_mistakes_known
+    
 
 
 def main(sparksession,df_filtered_tweets):
-#TODO write actual code
-    return df_filtered_tweets
+    # Make a df with encountered mistakes by language to make spell checking faster over time
+    # This also keeps track of how often a specific mispelling is used
+    # structure: {language,spelling,[distance,count]}    
+    # language - the language tag
+    # spelling - this specific spelling of the word
+    # distance - number of mistakes (based on [] distance between this spelling and closest known word)
+    # count - number of times this mistake has been encountered, minimum of 1
+    columns = ['lang_id','word','dist_count']
+    df_mistakes_known = sparksession.createDataFrame([],columns)
+    # TODO map spell checker for tweets over all tweets
+    
+    return df_filtered_tweets, df_mistakes_known
 
 #expected output df structure:
 # ('user_id', 
