@@ -207,6 +207,7 @@ def spell_check_word(language_code, word,sparksession):
     global list_schema
     global correct_words
     #check if the word is in the known mistakes
+    global df_mistakes_known
     df_word = df_mistakes_known.filter(df_mistakes_known.lang_id == language_code).filter(df_mistakes_known.spelling == word)
     dist = 0
     if df_word.isEmpty():
