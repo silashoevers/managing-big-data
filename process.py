@@ -200,6 +200,8 @@ def get_correct_wordlists(spark):
     # word              - [String]              - registered spelling of the misspelled words (also named actual)
     # dist_count_word   - (int,int,[String])    - contains a tuple of distance, count, and closest words
 
+
+
 def spell_check_word(language_code, word,sparksession):
     global df_mistakes_known
     global list_schema
