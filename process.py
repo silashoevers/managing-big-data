@@ -29,7 +29,7 @@ from nltk.metrics.distance import edit_distance
     # word       - String    - registered spelling of the misspelled word (also named actual)
     # dist_count - (int,int) - contains a tuple of distance and count
 COLUMNS = ['lang_id','spelling','dist_count_word']
-df_mistakes_known = sparksession.createDataFrame([],COLUMNS)
+df_mistakes_known = df_mistakes_known = sparksession.createDataFrame([('','',(0,0,''))],COLUMNS)
 
 # Correct word spelling lists
 nltk.download('words')
@@ -37,7 +37,7 @@ from nltk.corpus import words #English words
 # Dutch word list source: https://github.com/OpenTaal/opentaal-wordlist
 #TODO add dutch word list
 #TODO check language tags accuracy
-rdd_correct_words = sparksession.sparkContext.paralellize(
+rdd_correct_words = sparksession.sparkContext.parallelize(
     [
         ('en',words.words()),
         ('nl',[])
@@ -46,6 +46,7 @@ rdd_correct_words = sparksession.sparkContext.paralellize(
 
 def spell_check_word(language_code, word,sparksession):
     #check if the word is in the known mistakes
+    global df_mistakes_known
     df_word = df_mistakes_known.filter(df_mistakes_known.lang_id == language_code).filter(df_mistakes_known.spelling == word)
     dist = 0
     if df_word.isEmpty():
@@ -54,6 +55,8 @@ def spell_check_word(language_code, word,sparksession):
         # source: https://www.geeksforgeeks.org/correcting-words-using-nltk-in-python/ 
         #find the closest word and determine the edit distance
         correct_words = rdd_correct_words.lookup(language_code)
+        #TODO possible words finding task apparently not small, make more efficient
+        # maybe make df and split into columns by letter, then filter?
         possible_words = [(edit_distance(word, w),w) for w in correct_words if w[0]==word[0]] 
         (dist,actual) = sorted(possible_words,key=lambda t:t[0])[0]
         
@@ -91,7 +94,8 @@ def spell_check_tweet(language_code, text,sparksession):
 
 def main(sparksession,df_filtered_tweets):
     # TODO map spell checker for tweets over all tweets
-    df_mistakes_known = sparksession.createDataFrame([],COLUMNS)
+    global df_mistakes_known 
+    df_mistakes_known = sparksession.createDataFrame([('','',(0,0,''))],COLUMNS)
 
     return df_filtered_tweets, df_mistakes_known
 
