@@ -1,5 +1,5 @@
 import pandas as pd
-from pyspark.sql.functions import col, timestamp_seconds, hour, minute, second, pandas_udf
+from pyspark.sql.functions import col, timestamp_seconds, hour, minute, second, pandas_udf, when
 from pyspark.sql.types import IntegerType
 #expected input df structure:
 # .select('id',
@@ -64,6 +64,20 @@ def filter_user_tweeting_enough(tweets, min_num_windows = 3):
     return tweets.join(user_timewindow_counts, on='user_id')
 
 
+def simplify_time_buckets(tweets):
+    """
+    Turn time buckets from the four boolean values into a single string value,
+    which contains one of 'night', 'morning', 'afternoon' or 'evening'
+    """
+    
+    tweets = tweets.withColumn('time_bucket', \
+        when(col('night'), 'night').otherwise( \
+	    when(col('morning'), 'morning').otherwise( \
+  	        when(col('afternoon'), 'afternoon').otherwise('evening'))))
+    tweets = tweets.drop('night', 'morning', 'afternoon', 'evening')
+    return tweets
+
+
 def main(sparksession, tweets):
     # Filter for only the langs that we support
     tweets = filter_languages(tweets)
@@ -75,25 +89,23 @@ def main(sparksession, tweets):
     # Filter for only users that tweeted multiple times during the day (>3)
     # Note: does not work for processing different days
     tweets = filter_user_tweeting_enough(tweets)
+    tweets = simplify_time_buckets(tweets)
     return tweets
 
 #expected output df structure:
 # .select('id',
-#                     'text',
-#                     'lang',
-#                     col('user.lang').alias('user_lang'),
-#                     col('user.id').alias('user_id'),
-#                     col('user.name').alias('username'),
-#                     'user.verified',
-#                     'timestamp_ms',
-#                     'user.time_zone',
-#                     'user.utc_offset'
-#                     'user_count',)
-#                     'ts'
-#                     'hour'
-#                     'minute'
-#                     'second'
-#                     'night'
-#                     'morning'
-#                     'afternoon'
-#                     'evening'
+#        'text',
+#        'lang',
+#        col('user.lang').alias('user_lang'),
+#        col('user.id').alias('user_id'),
+#        col('user.name').alias('username'),
+#        'user.verified',
+#        'timestamp_ms',
+#        'user.time_zone',
+#        'user.utc_offset'
+#        'user_count',
+#        'ts',
+#        'hour',
+#        'minute',
+#        'second',
+#	 'time_bucket')
