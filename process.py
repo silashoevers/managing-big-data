@@ -15,10 +15,7 @@ from pyspark.sql.functions import col
 #                     'hour',
 #                     'minute',
 #                     'second',
-#                     'night',
-#                     'morning',
-#                     'afternoon',
-#                     'evening')
+#		      'time_bucket')
 
 #receives df with filtered tweets and:
 #   1) Checks number of spelling mistakes in each tweet
