@@ -47,7 +47,6 @@ def add_time_window(sparksession, df_filtered_tweets):
 
 def filter_languages(tweets):
     supported_langs = ['nl', 'en']
-    # TODO: allow language tags like nl-be, en-us and en-gb
     tweets = tweets.filter(col('lang').rlike('^' + '|'.join(supported_langs) + '$'))
     return tweets
 
