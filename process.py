@@ -43,9 +43,10 @@ nltk.download('words')
 from nltk.corpus import words #English words
 df_english_words = sparksession.createDataFrame(list_schema,words.words())
 #TODO check language tags accuracy
+#according to Doina the variable names are object references, thus small data, so this should work
 correct_words = {
-        'en': df_english_words.ref,
-        'nl': df_dutch_words.ref
+        'en': df_english_words,
+        'nl': df_dutch_words
 }
 
 def spell_check_word(language_code, word,sparksession):
@@ -58,16 +59,17 @@ def spell_check_word(language_code, word,sparksession):
     if df_word.isEmpty():
         #if it is not 
         #TODO figure out how to find the closest word 
-        # source: https://www.geeksforgeeks.org/correcting-words-using-nltk-in-python/ 
         df_correct_words_language = correct_words.get(language_code)
         #find the closest word and determine the edit distance
         #determine the edit distance to each word (key=word, value=distance)
         #sort then filter the df entries by distance to get lists of words with the same shortest edit distance
         df_word_dists = df_correct_words_language.withColumn(edit_distance(word,col(list_schema[0])))
+
         #TODO possible words finding task apparently not small, make more efficient
         # maybe make df and split into columns by letter, then filter?
-        possible_words = [(edit_distance(word, w),w) for w in correct_words if w[0]==word[0]] 
-        (dist,actual) = sorted(possible_words,key=lambda t:t[0])[0]
+        #TODO take out dead code
+        # possible_words = [(edit_distance(word, w),w) for w in correct_words if w[0]==word[0]] 
+        # (dist,actual) = sorted(possible_words,key=lambda t:t[0])[0]
         
         #TODO set max distance of word to classify as different word
         #TODO possible extension: determine count threshold to say 'accepted new spelling'
@@ -91,7 +93,7 @@ def spell_check_word(language_code, word,sparksession):
 def spell_check_tweet(language_code, text,sparksession):    
     #Turn text into rdd with each word and dist to correct spelling
     #text to rdd
-    rdd_tweet_text = sparksession.sparkContext.paralellize(clean_text.split(' ')).map(lambda w: (w,0))
+    rdd_tweet_text = sparksession.sparkContext.paralellize(text.split(' ')).map(lambda w: (w,0))
     #map spell check words
     rdd_tweet_spell_dist = rdd_tweet_text.map(lambda t: (t[0],spell_check_word(language_code=language_code,word=t[0],sparksession=sparksession)))
     #count the number of misspelled words, giving the tweet total
@@ -121,7 +123,7 @@ def main(sparksession,df_filtered_tweets):
         col('lang')
         )
     # map spell checker for tweets over all tweets
-    df_checked_tweets = df_cleaned_tweets.withColumn('')
+    df_checked_tweets = df_cleaned_tweets.withColumn('mistakes_percent',spell_check_tweet(col('clean_text')))
     
     return df_filtered_tweets, df_mistakes_known
 
