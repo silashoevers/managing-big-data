@@ -119,32 +119,6 @@ def text_clean(text):
     cleaned_text = text
     return cleaned_text
 
-def add_time_window(sparksession, df_filtered_tweets):
-    # TODO move this to filter_tweets.py
-    sparksession.conf.set("spark.sql.session.timeZone", "UTC")
-
-    # Filter based on timestamp being not null
-    df_filtered_tweets = df_filtered_tweets.filter(col('utc_offset').isNotNull())
-
-    # Convert into local time timestamps
-    df_timestamps = df_filtered_tweets.withColumn('ts', \
-            timestamp_seconds(col('timestamp_ms') / 1e3 + col('utc_offset'))) 
-
-
-    # Extract the hour
-    df_timestamps = df_timestamps.withColumns({ 'hour': hour('ts'), 'minute': minute('ts'), 'second': second('ts') })
-
-    # Add time-of-day as boolean flags
-    df_timestamp_buckets = df_timestamps.withColumns( {'night': col('hour') < 6,
-        'morning': (6 <= col('hour')) & (col('hour') < 12),
-        'afternoon': (12 <= col('hour')) & (col('hour') < 18),
-        'evening': 18 <= col('hour')})
-
-    df_timestamp_buckets.sort('timestamp_ms', ascending=True).show()
-    return df_timestamp_buckets    
-
-
-
 def main(sparksession,df_filtered_tweets):
     #initialise mistakes log
     get_correct_wordlists(sparksession)
