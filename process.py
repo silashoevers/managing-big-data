@@ -22,13 +22,13 @@ import os
 
 # Make a df with encountered mistakes by language to make spell checking faster over time
 # This also keeps track of how often a specific mispelling is used
-    # structure: {language,spelling,[distance,count]}    
-    # language   - String    - the language tag
-    # spelling   - String    - this specific spelling of the word
-    # distance   - int       - number of mistakes (based on [] distance between this spelling and closest known word)
-    # count      - int       - number of times this mistake has been encountered, minimum of 1
-    # word       - [String]  - registered spelling of the misspelled words (also named actual)
-    # dist_count - (int,int) - contains a tuple of distance and count
+    # structure: {language,spelling,(distance,count,word)}    
+    # language          - String                - the language tag
+    # spelling          - String                - this specific spelling of the word
+    # distance          - int                   - number of mistakes (based on [] distance between this spelling and closest known word)
+    # count             - int                   - number of times this mistake has been encountered, minimum of 1
+    # word              - [String]              - registered spelling of the misspelled words (also named actual)
+    # dist_count_word   - (int,int,[String])    - contains a tuple of distance, count, and closest words
 COLUMNS = ['lang_id','spelling','dist_count_word']
 df_mistakes_known = df_mistakes_known = sparksession.createDataFrame([('','',(0,0,[]))],COLUMNS)
 
