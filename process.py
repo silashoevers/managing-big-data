@@ -15,7 +15,7 @@
 #   1) Checks number of spelling mistakes in each tweet
 #   2) Calculates spelling mistakes as % of words in the tweet
 
-from pyspark.sql.functions import col,when
+from pyspark.sql.functions import col,when,asc
 import nltk
 from nltk.metrics.distance import edit_distance
 import os
@@ -50,31 +50,30 @@ correct_words = {
 }
 
 def spell_check_word(language_code, word,sparksession):
-    #check if the word is in the known mistakes
     global df_mistakes_known
     global list_schema
     global correct_words
+    #check if the word is in the known mistakes
     df_word = df_mistakes_known.filter(df_mistakes_known.lang_id == language_code).filter(df_mistakes_known.spelling == word)
     dist = 0
     if df_word.isEmpty():
         #if it is not 
-        #TODO figure out how to find the closest word 
         df_correct_words_language = correct_words.get(language_code)
         #find the closest word and determine the edit distance
         #determine the edit distance to each word (key=word, value=distance)
         #sort then filter the df entries by distance to get lists of words with the same shortest edit distance
-        df_word_dists = df_correct_words_language.withColumn(edit_distance(word,col(list_schema[0])))
-
-        #TODO possible words finding task apparently not small, make more efficient
-        # maybe make df and split into columns by letter, then filter?
-        #TODO take out dead code
-        # possible_words = [(edit_distance(word, w),w) for w in correct_words if w[0]==word[0]] 
-        # (dist,actual) = sorted(possible_words,key=lambda t:t[0])[0]
-        
+        df_word_dists = df_correct_words_language.withColumn('dist',edit_distance(word,col(list_schema[0]))).sort(asc("dist"))
+        dist = df_word_dists.first()['dist']
+        df_closest_dists = df_word_dists.filter(col('dist')==dist)
         #TODO set max distance of word to classify as different word
+
         #TODO possible extension: determine count threshold to say 'accepted new spelling'
         if dist>0:
         #if distance > 0, add the new spelling to the df with value and count
+            #make list of the closest words
+            col_actual = df_closest_dists.collect()
+            actual = [for x in col_actual x.words]
+            #add new spelling to the df
             df_new_mistake = sparksession.createDataFrame([(language_code,word,(dist,1,actual))],COLUMNS)
             df_mistakes_known = df_mistakes_known.union(df_new_mistake)
 
