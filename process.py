@@ -37,7 +37,7 @@ df_mistakes_known = df_mistakes_known = sparksession.createDataFrame([('','',(0,
 snum=os.getlogin()
 list_schema = ['words']
 
-df_dutch_words = sparksession.read.schema(list_schema).text("/user/"+snum"/wordlists/nl-words.txt")
+df_dutch_words = sparksession.read.schema(list_schema).text("/user/"+snum+"/wordlists/nl-words.txt")
 # English word list taken from the nltk corpus
 nltk.download('words')
 from nltk.corpus import words #English words
