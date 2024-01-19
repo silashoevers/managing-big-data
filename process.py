@@ -43,7 +43,7 @@ def get_correct_wordlists(spark):
     global correct_words
     global df_mistakes_known
     COLUMNS = ['lang_id','spelling','dist_count_word']
-    df_mistakes_known = spark.createDataFrame([('','',(0,0,[]))],COLUMNS)
+    df_mistakes_known = spark.createDataFrame([('','',(0,0,['']))],COLUMNS)
     
     # Correct word spelling lists
     # Dutch word list source: https://github.com/OpenTaal/opentaal-wordlist
