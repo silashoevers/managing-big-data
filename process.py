@@ -168,8 +168,9 @@ import os
 correct_words = None
 def get_correct_wordlists(spark):
     global correct_words
+    global df_mistakes_known
     COLUMNS = ['lang_id','spelling','dist_count_word']
-    df_mistakes_known = df_mistakes_known = spark.createDataFrame([('','',(0,0,[]))],COLUMNS)
+    df_mistakes_known = spark.createDataFrame([('','',(0,0,[]))],COLUMNS)
     
     # Correct word spelling lists
     # Dutch word list source: https://github.com/OpenTaal/opentaal-wordlist
@@ -180,7 +181,7 @@ def get_correct_wordlists(spark):
     # English word list taken from the nltk corpus
     nltk.download('words')
     from nltk.corpus import words #English words
-    df_english_words = sparksession.createDataFrame(list_schema,words.words())
+    df_english_words = spark.createDataFrame(list_schema,words.words())
     #TODO check language tags accuracy
     #according to Doina the variable names are object references, thus small data, so this should work
     correct_words = {
@@ -257,8 +258,6 @@ def text_clean(text):
 def main(sparksession,df_filtered_tweets):
     #initialise mistakes log
     get_correct_wordlists(sparksession)
-    global df_mistakes_known 
-    df_mistakes_known = sparksession.createDataFrame([('','',(0,0,''))],COLUMNS)
     # clean text of tweets
     df_cleaned_tweets = df_filtered_tweets.withColumn('clean_text',text_clean(col('text')))
     # map spell checker for tweets over all tweets
