@@ -19,7 +19,8 @@ from pyspark.sql.functions import col,when,asc
 import nltk
 from nltk.metrics.distance import edit_distance
 import os
-
+from pyspark.sql import SparkSession
+spark = SparkSession.builder.getOrCreate()
 # Make a df with encountered mistakes by language to make spell checking faster over time
 # This also keeps track of how often a specific mispelling is used
     # structure: {language,spelling,(distance,count,word)}    
@@ -37,11 +38,11 @@ df_mistakes_known = df_mistakes_known = sparksession.createDataFrame([('','',(0,
 snum=os.getlogin()
 list_schema = ['words']
 
-df_dutch_words = sparksession.read.schema(list_schema).text("/user/"+snum+"/wordlists/nl-words.txt")
+df_dutch_words = spark.read.schema(list_schema).text("/user/"+snum+"/wordlists/nl-words.txt")
 # English word list taken from the nltk corpus
 nltk.download('words')
 from nltk.corpus import words #English words
-df_english_words = sparksession.createDataFrame(list_schema,words.words())
+df_english_words = spark.createDataFrame(list_schema,words.words())
 #TODO check language tags accuracy
 #according to Doina the variable names are object references, thus small data, so this should work
 correct_words = {
@@ -140,3 +141,7 @@ def main(sparksession,df_filtered_tweets):
 #   'second'
 #   'time_bucket'
 #   'lang')
+
+#testing
+print("should be 0 :"+ str(spell_check_word('en',"five",spark)))
+print("should be 1 :"+ str(spell_check_word('en',"fife",spark)))
