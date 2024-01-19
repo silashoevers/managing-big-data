@@ -63,14 +63,14 @@ def spell_check_word(language_code, word,sparksession):
         #determine the edit distance to each word (key=word, value=distance)
         #sort then filter the df entries by distance to get lists of words with the same shortest edit distance
         df_word_dists = df_correct_words_language.withColumn('dist',edit_distance(word,col(list_schema[0]))).sort(asc("dist"))
+        #get the shortest edit distance
         dist = df_word_dists.first()['dist']
-        df_closest_dists = df_word_dists.filter(col('dist')==dist)
-        #TODO set max distance of word to classify as different word
-
+        #TODO possible extension: set max distance of word to classify as a word from a different language
         #TODO possible extension: determine count threshold to say 'accepted new spelling'
         if dist>0:
-        #if distance > 0, add the new spelling to the df with value and count
+        #if shortest edit distance > 0, add the new spelling to the df with correct word list and count
             #make list of the closest words
+            df_closest_dists = df_word_dists.filter(col('dist')==dist)
             col_actual = df_closest_dists.collect()
             actual = [for x in col_actual x.words]
             #add new spelling to the df
@@ -84,14 +84,14 @@ def spell_check_word(language_code, word,sparksession):
         actual = df_word.first()['dist_count_word'][2]
         df_mistakes_known = df_mistakes_known.withColumn('dist_count_word',when(col("spelling")==word,(dist,count,actual)).otherwise(col('dist_count_word')))
         
-    #return distance
+    #return the edit distance
     return dist
 
 
-#Maps word spell checker over tweet text, then returns the percentage of words misspelled
+#Maps word spell checker over tweet text, then returns number and the percentage of words misspelled
 def spell_check_tweet(language_code, text,sparksession):    
     #Turn text into rdd with each word and dist to correct spelling
-    #text to rdd
+    #text to rdd of words
     rdd_tweet_text = sparksession.sparkContext.paralellize(text.split(' ')).map(lambda w: (w,0))
     #map spell check words
     rdd_tweet_spell_dist = rdd_tweet_text.map(lambda t: (t[0],spell_check_word(language_code=language_code,word=t[0],sparksession=sparksession)))
@@ -109,11 +109,16 @@ def main(sparksession,df_filtered_tweets):
     global df_mistakes_known 
     df_mistakes_known = sparksession.createDataFrame([('','',(0,0,''))],COLUMNS)
     # clean text of tweets
-    df_cleaned_tweets = df_filtered_tweets.select(
+    df_cleaned_tweets = df_filtered_tweets.withColumn('clean_text',text_clean(col('text')))
+    # map spell checker for tweets over all tweets
+    df_checked_tweets = df_cleaned_tweets.withColumn('mistakes_percent',spell_check_tweet(col('clean_text')))
+    # reformat checked tweets into desired output
+     df_formatted_tweets = df_checked_tweets.withColumn(
         col('user_id'),
         col('username'),
         col('id').alias('tweet_id'),
-        text_clean(col('text')).alias('clean_text'),
+        col('mistakes_percent').getItem(0).alias('spelling_mistakes'),
+        col('mistakes_percent').getItem(1).alias('precentage_wrong'),
         col('ts'),
         col('hour'),
         col('minute'),
@@ -121,10 +126,7 @@ def main(sparksession,df_filtered_tweets):
         col('time_bucket'),
         col('lang')
         )
-    # map spell checker for tweets over all tweets
-    df_checked_tweets = df_cleaned_tweets.withColumn('mistakes_percent',spell_check_tweet(col('clean_text')))
-    
-    return df_filtered_tweets, df_mistakes_known
+    return df_formatted_tweets, df_mistakes_known
 
 #expected output df structure:
 # ('user_id', 
