@@ -25,6 +25,7 @@ import nltk
 from nltk.metrics.distance import edit_distance
 import os
 from pyspark.sql import SparkSession
+from pyspark.sql.types import StringType
 spark = SparkSession.builder.getOrCreate()
 
 # Make a df with encountered mistakes by language to make spell checking faster over time
@@ -48,13 +49,13 @@ def get_correct_wordlists(spark):
     # Correct word spelling lists
     # Dutch word list source: https://github.com/OpenTaal/opentaal-wordlist
     snum=os.getlogin()
-    list_schema = ['words']
+    list_schema = "string"
     
-    df_dutch_words = spark.read.schema(list_schema).text("/user/"+snum+"/wordlists/nl-words.txt")
+    df_dutch_words = spark.read.schema(list_schema).text("/user/"+snum+"/wordlists/nl-words.txt").toDF("words")
     # English word list taken from the nltk corpus
     nltk.download('words')
     from nltk.corpus import words #English words
-    df_english_words = spark.createDataFrame(list_schema,words.words())
+    df_english_words = spark.createDataFrame(list_schema,words.words()).toDF("words")
     #TODO check language tags accuracy
     #according to Doina the variable names are object references, thus small data, so this should work
     correct_words = {
