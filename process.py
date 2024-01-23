@@ -76,6 +76,15 @@ def spell_check_tweet(language_code, text,correct_words):
     percent = (total_mistakes/len(checked))*100
     return (total_mistakes,percent)
 
+def spell_check_rdd(df_correct_words,df_tweets):
+    #convert to RDD
+    #flatmap value split(' ') to get separate words
+    #cross product with correct words
+    #add distance
+    #reduce by id,word then only keep lowest distance value
+    #reduce by id to determine number of mispelled words and %
+    #return a df from this rdd
+    return df_checked_tweets
     
 #TODO write cleaner
 def text_clean(text):
