@@ -68,7 +68,7 @@ def get_correct_wordlists(spark):
     }
 
 
-def spell_check_word(language_code, word,sparksession):
+def spell_check_word(language_code, word):
     global df_mistakes_known
     global col_name
     global correct_words
@@ -95,8 +95,8 @@ def spell_check_word(language_code, word,sparksession):
             actual = [x.words for x in col_actual]
             #add new spelling to the df
             # sparksession = SparkSession.builder.getOrCreate()
-            df_new_mistake = sparksession.createDataFrame([(language_code,word,(dist,1,actual))],COLUMNS)
-            df_mistakes_known = df_mistakes_known.union(df_new_mistake)
+            # df_new_mistake = sparksession.createDataFrame([(language_code,word,(dist,1,actual))],COLUMNS)
+            # df_mistakes_known = df_mistakes_known.union(df_new_mistake)
 
     else:
         #if it is increase the associated count
@@ -110,7 +110,7 @@ def spell_check_word(language_code, word,sparksession):
 
 
 #Maps word spell checker over tweet text, then returns number and the percentage of words misspelled
-def spell_check_tweet(language_code, text,spark):    
+def spell_check_tweet(language_code, text):    
     #Turn text into rdd with each word and dist to correct spelling
     #text to rdd of words
     # sparksession = SparkSession.builder.getOrCreate()
@@ -123,7 +123,7 @@ def spell_check_tweet(language_code, text,spark):
     # percent = (total_mistakes/rdd_tweet_text.count())*100
 
     words = text.split('')
-    checker = lambda w: spell_check_word(language_code=language_code,word=w,sparksession=spark)
+    checker = lambda w: spell_check_word(language_code=language_code,word=w)
     checked = map(checker,words)
     total_mistakes = len(checked.filter(lambda t: t[1]>0))
     percent = (total_mistakes/len(checked))*100
@@ -139,7 +139,7 @@ def main(sparksession,df_filtered_tweets):
     #initialise mistakes log
     get_correct_wordlists(sparksession)
     cleaner = udf(lambda t: text_clean(t),StringType())
-    tweet_spell_udf = udf(lambda l,t:spell_check_tweet(l,t,sparksession),StructType([StructField('0',IntegerType()),StructField('1',DoubleType())]))
+    tweet_spell_udf = udf(lambda l,t:spell_check_tweet(l,t),StructType([StructField('0',IntegerType()),StructField('1',DoubleType())]))
     # clean text of tweets
     df_cleaned_tweets = df_filtered_tweets.withColumn('clean_text',cleaner("text"))
     # map spell checker for tweets over all tweets
