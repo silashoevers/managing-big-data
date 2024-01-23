@@ -80,11 +80,10 @@ def spell_check_word(word,correct_words):
     #if df_word.isEmpty():
     if True:
         #if it is not 
-        df_correct_words_language = correct_words.get(language_code)
         #find the closest word and determine the edit distance
         #determine the edit distance to each word (key=word, value=distance)
         #sort then filter the df entries by distance to get lists of words with the same shortest edit distance
-        df_word_dists = df_correct_words_language.withColumn('dist',edit_distance(word,col(col_name))).sort(asc("dist"))
+        df_word_dists = correct_words.withColumn('dist',edit_distance(word,col(col_name))).sort(asc("dist"))
         #get the shortest edit distance
         dist = df_word_dists.first()['dist']
         #TODO possible extension: set max distance of word to classify as a word from a different language
@@ -162,7 +161,7 @@ def main(sparksession,df_filtered_tweets):
 		    col('lang')
 		    )
     df_formatted_tweets.show()
-    df_mistakes_known.show()
+    # df_mistakes_known.show()
     exit()
     return df_formatted_tweets, df_mistakes_known
 
