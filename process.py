@@ -37,18 +37,18 @@ from pyspark.sql.types import StringType,StructType,StructField, IntegerType, Do
     # word              - [String]              - registered spelling of the misspelled words (also named actual)
     # dist_count_word   - (int,int,[String])    - contains a tuple of distance, count, and closest words
 
-df_mistakes_known = None
-correct_words = None
+# df_mistakes_known = None
+# correct_words = None
 #structure of df_mistakes_known
 COLUMNS = ['lang_id','spelling','dist_count_word']
 #name of the column with correctly spelled words
 col_name = "words"
 def get_correct_wordlists(spark):
-    global correct_words
-    global df_mistakes_known
+    # global correct_words
+    # global df_mistakes_known
     global COLUMNS
     global col_name
-    df_mistakes_known = spark.createDataFrame([('','',(0,0,['']))],COLUMNS)
+    # df_mistakes_known = spark.createDataFrame([('','',(0,0,['']))],COLUMNS)
     
     # Correct word spelling lists
     # Dutch word list source: https://github.com/OpenTaal/opentaal-wordlist
@@ -65,12 +65,13 @@ def get_correct_wordlists(spark):
     	'en': df_english_words,
     	'nl': df_dutch_words
     }
+    return correct_words
 
 
-def spell_check_word(language_code, word, correct_words):
-    global df_mistakes_known
+def spell_check_word(word,correct_words):
+    # global df_mistakes_known
     global col_name
-    #global correct_words
+    # global correct_words
     global COLUMNS
     #check if the word is in the known mistakes
     #df_word = df_mistakes_known.filter(df_mistakes_known.lang_id == language_code).filter(df_mistakes_known.spelling == word)
@@ -111,7 +112,7 @@ def spell_check_word(language_code, word, correct_words):
 
 
 #Maps word spell checker over tweet text, then returns number and the percentage of words misspelled
-def spell_check_tweet(language_code, text, correct_words):    
+def spell_check_tweet(language_code, text,correct_words):    
     #Turn text into rdd with each word and dist to correct spelling
     #text to rdd of words
     # sparksession = SparkSession.builder.getOrCreate()
@@ -123,9 +124,10 @@ def spell_check_tweet(language_code, text, correct_words):
     # total_mistakes = rdd_tweet_spell_dist.filter(lambda t: t[1]>0).count()
     # percent = (total_mistakes/rdd_tweet_text.count())*100
 
-    words = text.split(' ')
-    checker = lambda w: spell_check_word(language_code=language_code,word=w, correct_words=correct_words)
-    checked = list(map(checker,words))
+    words = text.split('')
+    df_correct_words_language = correct_words.get(language_code)
+    checker = lambda w: spell_check_word(word=w,correct_words=df_correct_words_language)
+    checked = map(checker,words)
     total_mistakes = len(checked.filter(lambda t: t[1]>0))
     percent = (total_mistakes/len(checked))*100
     return (total_mistakes,percent)
@@ -137,9 +139,8 @@ def text_clean(text):
     return cleaned_text
 
 def main(sparksession,df_filtered_tweets):
-    global correct_words
     #initialise mistakes log
-    get_correct_wordlists(sparksession)
+    correct_words = get_correct_wordlists(sparksession)
     cleaner = udf(lambda t: text_clean(t),StringType())
     tweet_spell_udf = udf(lambda l,t:spell_check_tweet(l,t, correct_words),StructType([StructField('0',IntegerType()),StructField('1',DoubleType())]))
     # clean text of tweets
