@@ -24,6 +24,7 @@ print('Filtering tweets')
 df_filtered = filter_tweets.main(spark,df_loaded)
 
 #process the filtered data
+print('Processing tweet text')
 df_processed, df_mistakes = process.main(spark,df_filtered)
 
 #visualise results
