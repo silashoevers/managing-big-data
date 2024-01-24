@@ -35,7 +35,6 @@ def get_correct_wordlists(spark):
     snum=os.getlogin()
     df_dutch_words = spark.read.text("/user/"+snum+"/wordlists/nl-words.txt").toDF("words")
     # English word list taken from the nltk corpus
-    nltk.download('words')
     from nltk.corpus import words #English words
     df_english_words = spark.createDataFrame(words.words(),"string").toDF("words")
     #TODO check language tags accuracy

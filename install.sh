@@ -7,6 +7,8 @@ WORDLIST_DIR=/user/$USER/wordlists
 echo ">>>>> Installing pip requirements"
 pip install -U pip pandas numpy pyarrow nltk
 
+python3 -c "import nltk; nltk.download('words')"
+
 echo ">>>>> Aquiring Dutch wordlist"
 hdfs dfs -mkdir -p $WORDLIST_DIR
 
