@@ -118,16 +118,17 @@ def spell_check_rdd(correct_words,df_tweets, max_length_diff=1, max_edit_dist=2,
     pre_reduce_partitions = rdd_spellcheck_dist.getNumPartitions()
     print(f'Using {pre_reduce_partitions} partitions')
 
-    def seqFunc(u, v):
-        word, wdist = v
+    def seqFunc(u: tuple[set[str], int], v: tuple[str, int]) \
+            -> tuple[set[str], int]:
         potential_words, p_dist = u
+        word, wdist = v
         if wdist < p_dist:
-            return (set(word), wdist)
+            return ({word}, wdist)
         elif wdist == p_dist:
             potential_words.add(word)
         return u
-    def combFunc(u1, u2):
-        print(u1, u2)
+    def combFunc(u1: tuple[set[str], int], u2: tuple[set[str], int]) \
+            -> tuple[set[str], int]:
         words1, dist1 = u1
         words2, dist2 = u2
         if dist1 > dist2:
