@@ -27,7 +27,12 @@ import os
 from pyspark.sql import SparkSession
 from pyspark.sql.types import StringType,StructType,StructField, IntegerType, DoubleType
 from itertools import repeat
+from datetime import datetime
 
+import pandas as pd
+
+def print_time():
+    print(datetime.now().strftime('%H:%M:%S'))
 
 def get_correct_wordlists(spark):
     # Correct word spelling lists
@@ -58,6 +63,7 @@ def spell_check_rdd(correct_words,df_tweets, max_length_diff=1, max_edit_dist=2,
     ### Turn correct_words from dataframes into RDDs
     rdd_en_words = correct_words['en'].rdd.map(lambda w: ('en', w.words))
     rdd_nl_words = correct_words['nl'].rdd.map(lambda w: ('nl', w.words))
+    # lang, correct_word
     rdd_correct_words = rdd_en_words.union(rdd_nl_words) \
             .distinct()  # Word list should not contain duplicates
 
@@ -68,23 +74,30 @@ def spell_check_rdd(correct_words,df_tweets, max_length_diff=1, max_edit_dist=2,
     ### Split text into words
     # tweet_id, (lang, word)
     rdd_tweet_words = rdd_tweets.flatMapValues(lambda t: zip(repeat(t[0]), t[1].split())) \
-	        #.filter(lambda t: t[1][1].startswith('reme'))
-    
-    # lang, (tweet_id, word)
-    rdd_tweet_words_langfirst = rdd_tweet_words.map(lambda t: (t[1][0], (t[0], t[1][1])))
+	        #.filter(lambda t: t[1][1].startswith('a'))  # for testing
+
+    # lang, word
+    rdd_tweet_words_langfirst = rdd_tweet_words.map(lambda t: (t[1][0], t[1][1])) \
+            .distinct()
+
+    # (lang, word), tweet_id
+    rdd_words_tweetid_only = rdd_tweet_words.map(lambda t: ((t[1][0], t[1][1]), t[0]))
 
     ### Cartesian product with all correct_words for the given language
-    # (tweet_id, word), correct_word
-    rdd_words_correctproduct = rdd_tweet_words_langfirst.join(rdd_correct_words)\
-		.map(lambda t: ((t[1][0][0], t[1][0][1]), t[1][1]))
+    # join: lang, (word, correct_word)
+    # map: (lang, word), correct_word
+    rdd_words_correctproduct = rdd_tweet_words_langfirst.join(rdd_correct_words) \
+		.map(lambda t: ((t[0], t[1][0]), t[1][1]))
 
     def filter_word_length(tweet_word, correct_word):
-        length_diff = len(correct_word) <= len(tweet_word) + max_length_diff
+        length_diff = abs(len(correct_word) - len(tweet_word)) <= max_length_diff
         tweet_word_length = min_word_len <= len(tweet_word)
         return length_diff and tweet_word_length
 
     ### Don't consider words that are too small
     rdd_words_correctproduct = rdd_words_correctproduct.filter(lambda t: filter_word_length(t[0][1], t[1]))
+    [print(r) for r in rdd_words_correctproduct.take(20)]  # Doesn't take _that_ long to run
+    print_time()
 
     def filter_word_edit_dist(tweet_word, correct_word, edit_distance):
         """
@@ -95,34 +108,51 @@ def spell_check_rdd(correct_words,df_tweets, max_length_diff=1, max_edit_dist=2,
 
     ### Calculate all edit distances between words and correct words
     ### and consider only words with a low edit distance
-    # (tweet_id, word), (correct_word, edit_distance)
-    rdd_spellcheck_dist = rdd_words_correctproduct.map(lambda t: ((t[0][0], t[0][1]), (t[1], edit_distance(t[0][1], t[1]))), preservesPartitioning=True) \
+    # (lang, word), (correct_word, edit_distance)
+    rdd_spellcheck_dist = rdd_words_correctproduct.map(lambda t: (t[0], (t[1], edit_distance(t[0][1], t[1]))), preservesPartitioning=True) \
 	        .filter(lambda t: filter_word_edit_dist(t[0][1], t[1][0], t[1][1]))
-    #[print(r) for r in rdd_spellcheck_dist.take(20)]  # Doesn't take _that_ long to run
-
-    def smaller_edit_dist(rdd_row_a, rdd_row_b):
-        """Reduction for finding all the correct spelling of a word with lowest edit dist"""
-        edit_dist_a, words_a = rdd_row_a
-        edit_dist_b, words_b = rdd_row_b
-
-        if edit_dist_a < edit_dist_b:
-            return edit_dist_a, words_a
-        elif edit_dist_a > edit_dist_b:
-            return edit_dist_b, words_b
-        return edit_dist_a, [*words_a, *words_b]
+    [print(r) for r in rdd_spellcheck_dist.take(20)]  # Doesn't take _that_ long to run
+    print_time()
 
     print('Reducing to find smallest edit dist per word. THIS TAKES A WHILE')
-    rdd = rdd_spellcheck_dist.mapValues(lambda v: (v[1], [v[0]])) \
-            .reduceByKey(smaller_edit_dist)  # Expensive!
+    pre_reduce_partitions = rdd_spellcheck_dist.getNumPartitions()
+    print(f'Using {pre_reduce_partitions} partitions')
+
+    def seqFunc(u, v):
+        word, wdist = v
+        potential_words, p_dist = u
+        if wdist < p_dist:
+            return (set(word), wdist)
+        elif wdist == p_dist:
+            potential_words.add(word)
+        return u
+    def combFunc(u1, u2):
+        print(u1, u2)
+        words1, dist1 = u1
+        words2, dist2 = u2
+        if dist1 > dist2:
+            return (words2, dist2)
+        if dist1 == dist2:
+            words1.update(words2)
+        return u1
+    rdd = rdd_spellcheck_dist.aggregateByKey(zeroValue=(set(), 1000),
+            seqFunc=seqFunc,
+            combFunc=combFunc)
+
 
     [print(r) for r in rdd.take(200)]
+    print_time()
 
     print('Spelling mistake % calculation not yet implemented')
     exit()
     return df_tweets
     
-#TODO write cleaner
 def text_clean(text):
+    """
+    TODO
+    Lowercase all text, strip punctuation.
+    Also apply the same text transformations to the dictionary words!
+    """
     cleaned_text = text
     return cleaned_text
 
