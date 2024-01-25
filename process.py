@@ -20,23 +20,22 @@
 #   1) Checks number of spelling mistakes in each tweet
 #   2) Calculates spelling mistakes as % of words in the tweet
 
-from pyspark.sql.functions import col,when,asc, udf
+from pyspark.sql.functions import col,when,asc, udf, broadcast
 import nltk
 from nltk.metrics.distance import edit_distance
 import os
 from pyspark.sql import SparkSession
 from pyspark.sql.types import StringType,StructType,StructField, IntegerType, DoubleType
 
-
-def get_correct_wordlists(spark):
+def get_correct_wordlists(spark,column_name):
     # Correct word spelling lists
     # Dutch word list source: https://github.com/OpenTaal/opentaal-wordlist
     snum=os.getlogin()
-    df_dutch_words = spark.read.text("/user/"+snum+"/wordlists/nl-words.txt").toDF("words")
+    df_dutch_words = spark.read.text("/user/"+snum+"/wordlists/nl-words.txt").toDF(column_name.value)
     # English word list taken from the nltk corpus
     nltk.download('words')
     from nltk.corpus import words #English words
-    df_english_words = spark.createDataFrame(words.words(),"string").toDF("words")
+    df_english_words = spark.createDataFrame(words.words(),"string").toDF(column_name.value)
     #TODO check language tags accuracy
     #according to Doina the variable names are object references, thus small data, so this should work
     correct_words = {
@@ -46,12 +45,12 @@ def get_correct_wordlists(spark):
     return correct_words
 
 
-def spell_check_word(word,correct_words):
+def spell_check_word(word,correct_words,column_name):
     dist = 0
     #find the closest word and determine the edit distance
     #determine the edit distance to each word (key=word, value=distance)
     #sort then filter the df entries by distance to get lists of words with the same shortest edit distance
-    df_word_dists = correct_words.withColumn('dist',edit_distance(word,col("words"))).sort(asc("dist"))
+    df_word_dists = correct_words.withColumn('dist',edit_distance(word,col(column_name.value))).sort(asc("dist"))
     #get the shortest edit distance
     dist = df_word_dists.first()['dist']
     #TODO possible extension: set max distance of word to classify as a word from a different language
@@ -61,13 +60,13 @@ def spell_check_word(word,correct_words):
 
 
 #Maps word spell checker over tweet text, then returns number and the percentage of words misspelled
-def spell_check_tweet(language_code, text,correct_words):    
+def spell_check_tweet(language_code, text,correct_words,column_name):    
     #split the text into individual words
     words = text.split('')
     #get the list of correct words in the right language
     df_correct_words_language = correct_words.get(language_code)
     #make a mapable function for checking word spelling
-    checker = lambda w: spell_check_word(word=w,correct_words=df_correct_words_language)
+    checker = lambda w: spell_check_word(word=w,correct_words=df_correct_words_language,column_name=column_name)
     #map over the list of words to get a list of edit distances to a correct word
     checked = map(checker,words)
     #find the number of mispelled words by filtering to edit distances over 0
@@ -93,10 +92,12 @@ def text_clean(text):
 
 def main(sparksession,df_filtered_tweets):
     #initialise the correct word lists
-    correct_words = get_correct_wordlists(sparksession)
+    column_name = sparksession.sparkContext.broadcast("words")
+    correct_words = get_correct_wordlists(sparksession,column_name=column_name)
+    broadcasted_correct = sparksession.sparkContext.broadcast(correct_words)
     #define udfs for cleaning an spell checking tweets
     cleaner = udf(lambda t: text_clean(t),StringType())
-    tweet_spell_udf = udf(lambda l,t:spell_check_tweet(l,t, correct_words),StructType([StructField('0',IntegerType()),StructField('1',DoubleType())]))
+    tweet_spell_udf = udf(lambda l,t:spell_check_tweet(l,t, broadcasted_correct.value,column_name=column_name),StructType([StructField('0',IntegerType()),StructField('1',DoubleType())]))
     # clean text of tweets
     df_cleaned_tweets = df_filtered_tweets.withColumn('clean_text',cleaner("text"))
     # map spell checker for tweets over all tweets
