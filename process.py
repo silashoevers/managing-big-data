@@ -31,8 +31,22 @@ from datetime import datetime
 
 import pandas as pd
 
+DEBUG = True
+
 def print_time():
     print(datetime.now().strftime('%H:%M:%S'))
+
+def debug_print_rdd(rdd, name='', n_take=10):
+    if not DEBUG:
+        return
+    print('RDD:', name)
+    for i in rdd.take(n_take):
+        print(f'\t{i}')
+    l = rdd.mapPartitionsWithIndex(lambda x,it: [(x,sum(1 for _ in it))]).collect()
+    print(f'Partition sizes: {l}')
+    print_time()
+    print()
+    
 
 def get_correct_wordlists(spark):
     # Correct word spelling lists
@@ -51,7 +65,14 @@ def get_correct_wordlists(spark):
     return correct_words
 
 
-def spell_check_rdd(correct_words,df_tweets, max_length_diff=1, max_edit_dist=2, min_word_len=4):
+def spell_check_rdd(correct_words,df_tweets,
+                    max_length_diff=1,
+                    max_edit_dist=2,
+                    min_word_len=5,
+                    n_spellcheck_partitions=40):
+    """
+    Words need to start with the same language to be checked for misspelling
+    """
     #convert to RDD
     #flatmap value split(' ') to get separate words
     #cross product with correct words
@@ -61,11 +82,13 @@ def spell_check_rdd(correct_words,df_tweets, max_length_diff=1, max_edit_dist=2,
     #return a df from this rdd
 
     ### Turn correct_words from dataframes into RDDs
-    rdd_en_words = correct_words['en'].rdd.map(lambda w: ('en', w.words))
-    rdd_nl_words = correct_words['nl'].rdd.map(lambda w: ('nl', w.words))
-    # lang, correct_word
+    rdd_en_words = correct_words['en'].rdd.map(lambda w: (('en', w.words[0]), w.words))
+    rdd_nl_words = correct_words['nl'].rdd.map(lambda w: (('nl', w.words[0]), w.words))
+    # (lang, firstletter), correct_word
     rdd_correct_words = rdd_en_words.union(rdd_nl_words) \
             .distinct()  # Word list should not contain duplicates
+
+    debug_print_rdd(rdd_correct_words, 'correct_words')
 
     ### Convert df_tweets into RDD
     # tweet_id, (lang, text)
@@ -73,21 +96,24 @@ def spell_check_rdd(correct_words,df_tweets, max_length_diff=1, max_edit_dist=2,
 
     ### Split text into words
     # tweet_id, (lang, word)
-    rdd_tweet_words = rdd_tweets.flatMapValues(lambda t: zip(repeat(t[0]), t[1].split())) \
-	        #.filter(lambda t: t[1][1].startswith('a'))  # for testing
+    rdd_tweet_words = rdd_tweets.flatMapValues(lambda t: zip(repeat(t[0]), t[1].split()))
 
-    # lang, word
-    rdd_tweet_words_langfirst = rdd_tweet_words.map(lambda t: (t[1][0], t[1][1])) \
+    # (lang, firstletter), word
+    rdd_tweet_words_langfirst = rdd_tweet_words.map(lambda t: ((t[1][0], t[1][1][0]), t[1][1])) \
             .distinct()
+    debug_print_rdd(rdd_tweet_words_langfirst, 'tweet_words_langfirst')
 
     # (lang, word), tweet_id
-    rdd_words_tweetid_only = rdd_tweet_words.map(lambda t: ((t[1][0], t[1][1]), t[0]))
+    rdd_words_tweetid_only = rdd_tweet_words.map(lambda t: ((t[1][0], t[1][1]), t[0])) \
+            .repartition(n_spellcheck_partitions)
+
 
     ### Cartesian product with all correct_words for the given language
-    # join: lang, (word, correct_word)
+    # join: (lang, firstletter), (word, correct_word)
     # map: (lang, word), correct_word
     rdd_words_correctproduct = rdd_tweet_words_langfirst.join(rdd_correct_words) \
-		.map(lambda t: ((t[0], t[1][0]), t[1][1]))
+            .map(lambda t: ((t[0][0], t[1][0]), t[1][1])) \
+            .repartition(n_spellcheck_partitions)
 
     def filter_word_length(tweet_word, correct_word):
         length_diff = abs(len(correct_word) - len(tweet_word)) <= max_length_diff
@@ -95,9 +121,10 @@ def spell_check_rdd(correct_words,df_tweets, max_length_diff=1, max_edit_dist=2,
         return length_diff and tweet_word_length
 
     ### Don't consider words that are too small
-    rdd_words_correctproduct = rdd_words_correctproduct.filter(lambda t: filter_word_length(t[0][1], t[1]))
-    [print(r) for r in rdd_words_correctproduct.take(20)]  # Doesn't take _that_ long to run
-    print_time()
+    rdd_words_correctproduct = rdd_words_correctproduct \
+            .filter(lambda t: filter_word_length(t[0][1], t[1]))
+
+    debug_print_rdd(rdd_words_correctproduct, name='words_correctproduct')
 
     def filter_word_edit_dist(tweet_word, correct_word, edit_distance):
         """
@@ -111,17 +138,13 @@ def spell_check_rdd(correct_words,df_tweets, max_length_diff=1, max_edit_dist=2,
     # (lang, word), (correct_word, edit_distance)
     rdd_spellcheck_dist = rdd_words_correctproduct.map(lambda t: (t[0], (t[1], edit_distance(t[0][1], t[1]))), preservesPartitioning=True) \
 	        .filter(lambda t: filter_word_edit_dist(t[0][1], t[1][0], t[1][1]))
-    [print(r) for r in rdd_spellcheck_dist.take(20)]  # Doesn't take _that_ long to run
-    print_time()
-
-    print('Reducing to find smallest edit dist per word. THIS TAKES A WHILE')
-    pre_reduce_partitions = rdd_spellcheck_dist.getNumPartitions()
-    print(f'Using {pre_reduce_partitions} partitions')
+    debug_print_rdd(rdd_spellcheck_dist, 'spellcheck_dist')
 
     def seqFunc(u: tuple[set[str], int], v: tuple[str, int]) \
             -> tuple[set[str], int]:
         potential_words, p_dist = u
         word, wdist = v
+        #print(u, v)
         if wdist < p_dist:
             return ({word}, wdist)
         elif wdist == p_dist:
@@ -129,6 +152,7 @@ def spell_check_rdd(correct_words,df_tweets, max_length_diff=1, max_edit_dist=2,
         return u
     def combFunc(u1: tuple[set[str], int], u2: tuple[set[str], int]) \
             -> tuple[set[str], int]:
+        #print(u1, u2)
         words1, dist1 = u1
         words2, dist2 = u2
         if dist1 > dist2:
@@ -136,14 +160,19 @@ def spell_check_rdd(correct_words,df_tweets, max_length_diff=1, max_edit_dist=2,
         if dist1 == dist2:
             words1.update(words2)
         return u1
-    rdd = rdd_spellcheck_dist.aggregateByKey(zeroValue=(set(), 1000),
-            seqFunc=seqFunc,
-            combFunc=combFunc)
+    rdd_closest_spellings = rdd_spellcheck_dist \
+            .aggregateByKey(zeroValue=(set(), max_edit_dist + 1),
+                            seqFunc=seqFunc,
+                            combFunc=combFunc)
+    # TODO do something with this rdd (save to disk for stats)
+    debug_print_rdd(rdd_closest_spellings, 'closest_spellings', n_take=500)
 
-
-    [print(r) for r in rdd.take(200)]
-    print_time()
-
+    ### Calculate % spelling mistakes per tweet
+    # -> convert to boolean (mistake / no mistake)
+    # -> join on rdd_words_tweetid_only
+    # -> map so that tweetid is the key
+    # -> aggregateByKey to calculate (spelling_mistakes, total_words) per tweet
+    # -> Convert back to dataframe, join with input dataframe?
     print('Spelling mistake % calculation not yet implemented')
     exit()
     return df_tweets
@@ -151,7 +180,8 @@ def spell_check_rdd(correct_words,df_tweets, max_length_diff=1, max_edit_dist=2,
 def text_clean(text):
     """
     TODO
-    Lowercase all text, strip punctuation.
+    Lowercase all text, remove all words starting with # or @,
+    remove URLs, strip punctuation.
     Also apply the same text transformations to the dictionary words!
     """
     cleaned_text = text
