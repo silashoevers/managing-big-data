@@ -28,7 +28,8 @@ from pyspark.sql import SparkSession
 from pyspark.sql.types import StringType,StructType,StructField, IntegerType, DoubleType
 from itertools import repeat
 from datetime import datetime
-
+import re
+import string
 import pandas as pd
 
 DEBUG = True
@@ -47,6 +48,24 @@ def debug_print_rdd(rdd, name='', n_take=10):
     print_time()
     print()
     
+hashtags_usernames_re = re.compile(r'[#@].+\s')
+rt_re = re.compile(r'\bRT\b')
+punctuation_re = re.compile(r'[%s]' % re.escape(string.punctuation))
+
+@udf(StringType())
+def text_clean(text):
+    """
+    Lowercase all text, remove all words starting with # or @,
+    remove URLs, strip punctuation.
+    Also apply the same text transformations to the dictionary words!
+    """
+    text = rt_re.sub('', text) # Remove retweet 'RT'
+    text = text.lower() # Lowercase text
+    text = hashtags_usernames_re.sub('', text) # Remove hashtags and usernames
+    text = punctuation_re.sub('', text) # Remove punctuation
+    # TODO remove urls
+    return text
+
 
 def get_correct_wordlists(spark):
     # Correct word spelling lists
@@ -59,8 +78,8 @@ def get_correct_wordlists(spark):
     #TODO check language tags accuracy
     #according to Doina the variable names are object references, thus small data, so this should work
     correct_words = {
-    	'en': df_english_words,
-    	'nl': df_dutch_words
+    	'en': df_english_words.withColumn('words', text_clean('words')),
+    	'nl': df_dutch_words.withColumn('words', text_clean('words'))
     }
     return correct_words
 
@@ -71,7 +90,7 @@ def spell_check_rdd(correct_words,df_tweets,
                     min_word_len=4,
                     n_spellcheck_partitions=40):
     """
-    Words need to start with the same language to be checked for misspelling
+    Words need to start with the same letter to be checked for misspelling
     """
     #convert to RDD
     #flatmap value split(' ') to get separate words
@@ -92,7 +111,7 @@ def spell_check_rdd(correct_words,df_tweets,
 
     ### Convert df_tweets into RDD
     # tweet_id, (lang, text)
-    rdd_tweets = df_tweets.rdd.map(lambda row: (row.id, (row.lang, row.text)))
+    rdd_tweets = df_tweets.rdd.map(lambda row: (row.id, (row.lang, row.clean_text)))
 
     ### Split text into words
     # tweet_id, (lang, word)
@@ -197,30 +216,16 @@ def spell_check_rdd(correct_words,df_tweets,
             .withColumn('mistake_ratio', col('num_mistakes') / col('num_words'))
     df_mistake_word_count.show()
 
-    return df_tweets.join(df_mistake_word_count, on='id').withColumnRenamed('id', 'tweet_id')
+    df_tweets_processed = df_tweets.join(df_mistake_word_count, on='id').withColumnRenamed('id', 'tweet_id')
+    return df_tweets_processed, df_mistakes
     
-def text_clean(text):
-    """
-    TODO
-    Lowercase all text, remove all words starting with # or @,
-    remove URLs, strip punctuation.
-    Also apply the same text transformations to the dictionary words!
-    """
-    cleaned_text = text
-    return cleaned_text
-
 def main(sparksession,df_filtered_tweets):
-    #initialise the correct word lists
     correct_words = get_correct_wordlists(sparksession)
-    #define udfs for cleaning an spell checking tweets
-    cleaner = udf(lambda t: text_clean(t),StringType())
-    df_cleaned_tweets = df_filtered_tweets.withColumn('clean_text',cleaner("text"))
-
-    df_spell_mistakes = spell_check_rdd(correct_words, df_cleaned_tweets)
-    df_spell_mistakes.show()
-
-    df_mistakes_per_user = mistakes_per_user(df_spell_mistakes)
-    return df_mistakes_per_user
+    df_cleaned_tweets = df_filtered_tweets.withColumn('clean_text', text_clean("text"))
+    df_tweets_processed, df_mistakes = spell_check_rdd(correct_words, df_cleaned_tweets)
+    df_tweets_processed.show()
+    df_mistakes.show()
+    return df_tweets_processed, df_mistakes
     
 
 #expected output df structure:
