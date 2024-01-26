@@ -181,8 +181,9 @@ def spell_check_rdd(correct_words,df_tweets,
             .aggregateByKey(zeroValue=(set(), max_edit_dist + 1),
                             seqFunc=seqFunc,
                             combFunc=combFunc)
-    # TODO do something with this rdd (save to disk for stats)
     debug_print_rdd(rdd_closest_spellings, 'closest_spellings', n_take=500)
+    df_mistakes = rdd_closest_spellings.map(lambda t: (t[0][1], t[0][0], list(t[1][0]), t[1][1])) \
+            .toDF(['tweet_word', 'lang', 'correct_words', 'edit_distance'])
 
     ### Calculate % spelling mistakes per tweet
     # -> convert to boolean (mistake / no mistake)
