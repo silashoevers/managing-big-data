@@ -26,7 +26,6 @@ python3 -c "import nltk; nltk.download('words')"
 # Install Dutch wordlist
 hdfs dfs -mkdir -p $WORDLIST_DIR
 if hdfs dfs -ls $WORDLIST_DIR/nl-words.txt; then
-	;
 else
 	curl https://raw.githubusercontent.com/OpenTaal/opentaal-wordlist/master/wordlist.txt | \
 		hdfs dfs -put - $WORDLIST_DIR/nl-words.txt
