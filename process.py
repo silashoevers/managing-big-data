@@ -67,8 +67,8 @@ def get_correct_wordlists(spark):
 
 def spell_check_rdd(correct_words,df_tweets,
                     max_length_diff=1,
-                    max_edit_dist=2,
-                    min_word_len=5,
+                    max_edit_dist=3,
+                    min_word_len=4,
                     n_spellcheck_partitions=40):
     """
     Words need to start with the same language to be checked for misspelling
@@ -144,7 +144,6 @@ def spell_check_rdd(correct_words,df_tweets,
             -> tuple[set[str], int]:
         potential_words, p_dist = u
         word, wdist = v
-        #print(u, v)
         if wdist < p_dist:
             return ({word}, wdist)
         elif wdist == p_dist:
@@ -152,7 +151,6 @@ def spell_check_rdd(correct_words,df_tweets,
         return u
     def combFunc(u1: tuple[set[str], int], u2: tuple[set[str], int]) \
             -> tuple[set[str], int]:
-        #print(u1, u2)
         words1, dist1 = u1
         words2, dist2 = u2
         if dist1 > dist2:
@@ -173,7 +171,31 @@ def spell_check_rdd(correct_words,df_tweets,
     # -> map so that tweetid is the key
     # -> aggregateByKey to calculate (spelling_mistakes, total_words) per tweet
     # -> Convert back to dataframe, join with input dataframe?
-    print('Spelling mistake % calculation not yet implemented')
+
+    # (lang, word), is_mistake
+    rdd_mistakes = rdd_closest_spellings.mapValues(lambda t: t[1] > 0)
+    debug_print_rdd(rdd_mistakes, 'mistakes')
+
+    # (lang, word), (is_mistake, tweet_id)
+    rdd_mistakes_with_tweetids = rdd_mistakes.join(rdd_words_tweetid_only)
+    debug_print_rdd(rdd_mistakes_with_tweetids, 'mistakes_with_tweetids')
+
+    # tweet_id, (word, is_mistake)
+    rdd_tweetids_mistakes = rdd_mistakes_with_tweetids.map(lambda t: (t[1][1], (t[0][1], t[1][0])))
+    debug_print_rdd(rdd_tweetids_mistakes, 'tweetids_mistakes')
+
+    # tweetid, (num_words, num_mistakes)
+    def count_words_mistakes(v1, v2):
+        print(v1, v2)
+        return (v1[0] + v2[0], v1[1] + v2[1])
+    rdd_mistake_word_count = rdd_tweetids_mistakes.mapValues(lambda t: (1, int(t[1]))) \
+            .reduceByKey(count_words_mistakes, numPartitions=n_spellcheck_partitions)
+    debug_print_rdd(rdd_mistake_word_count, 'mistake_word_count')
+
+    rdd_mistake_ratio = rdd_mistake_word_count.mapValues(lambda t: t[1] / t[0])
+    debug_print_rdd(rdd_mistake_ratio, 'mistake_ratio')
+
+    # TODO: join mistake_ratios with original tweet dataframe and add as column
     exit()
     return df_tweets
     
