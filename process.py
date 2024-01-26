@@ -1,4 +1,3 @@
-from pyspark.sql.functions import col
 #expected input df structure:
 # .select('id',
 #                     'text',
@@ -21,116 +20,221 @@ from pyspark.sql.functions import col
 #   1) Checks number of spelling mistakes in each tweet
 #   2) Calculates spelling mistakes as % of words in the tweet
 
-from pyspark.sql.functions import col,when,asc
+from pyspark.sql.functions import col,when,asc, udf
 import nltk
 from nltk.metrics.distance import edit_distance
 import os
+from pyspark.sql import SparkSession
+from pyspark.sql.types import StringType,StructType,StructField, IntegerType, DoubleType
+from itertools import repeat
+from datetime import datetime
 
+import pandas as pd
 
-correct_words = None
-def get_correct_wordlists(spark):
-    global correct_words
-    global df_mistakes_known
-    COLUMNS = ['lang_id','spelling','dist_count_word']
-    df_mistakes_known = spark.createDataFrame([('','',(0,0,[]))],COLUMNS)
+DEBUG = True
+
+def print_time():
+    print(datetime.now().strftime('%H:%M:%S'))
+
+def debug_print_rdd(rdd, name='', n_take=10):
+    if not DEBUG:
+        return
+    print('RDD:', name)
+    for i in rdd.take(n_take):
+        print(f'\t{i}')
+    l = rdd.mapPartitionsWithIndex(lambda x,it: [(x,sum(1 for _ in it))]).collect()
+    print(f'Partition sizes: {l}')
+    print_time()
+    print()
     
+
+def get_correct_wordlists(spark):
     # Correct word spelling lists
     # Dutch word list source: https://github.com/OpenTaal/opentaal-wordlist
     snum=os.getlogin()
-    list_schema = ['words']
-    
-    df_dutch_words = spark.read.schema(list_schema).text("/user/"+snum+"/wordlists/nl-words.txt")
+    df_dutch_words = spark.read.text("/user/"+snum+"/wordlists/nl-words.txt").toDF("words")
     # English word list taken from the nltk corpus
-    nltk.download('words')
     from nltk.corpus import words #English words
-    df_english_words = spark.createDataFrame(list_schema,words.words())
+    df_english_words = spark.createDataFrame(words.words(),"string").toDF("words")
     #TODO check language tags accuracy
     #according to Doina the variable names are object references, thus small data, so this should work
     correct_words = {
     	'en': df_english_words,
     	'nl': df_dutch_words
     }
-	
-
-# Make a df with encountered mistakes by language to make spell checking faster over time
-# This also keeps track of how often a specific mispelling is used
-    # structure: {language,spelling,(distance,count,word)}    
-    # language          - String                - the language tag
-    # spelling          - String                - this specific spelling of the word
-    # distance          - int                   - number of mistakes (based on [] distance between this spelling and closest known word)
-    # count             - int                   - number of times this mistake has been encountered, minimum of 1
-    # word              - [String]              - registered spelling of the misspelled words (also named actual)
-    # dist_count_word   - (int,int,[String])    - contains a tuple of distance, count, and closest words
-
-def spell_check_word(language_code, word,sparksession):
-    global df_mistakes_known
-    global list_schema
-    global correct_words
-    #check if the word is in the known mistakes
-    df_word = df_mistakes_known.filter(df_mistakes_known.lang_id == language_code).filter(df_mistakes_known.spelling == word)
-    dist = 0
-    if df_word.isEmpty():
-        #if it is not 
-        df_correct_words_language = correct_words.get(language_code)
-        #find the closest word and determine the edit distance
-        #determine the edit distance to each word (key=word, value=distance)
-        #sort then filter the df entries by distance to get lists of words with the same shortest edit distance
-        df_word_dists = df_correct_words_language.withColumn('dist',edit_distance(word,col(list_schema[0]))).sort(asc("dist"))
-        #get the shortest edit distance
-        dist = df_word_dists.first()['dist']
-        #TODO possible extension: set max distance of word to classify as a word from a different language
-        #TODO possible extension: determine count threshold to say 'accepted new spelling'
-        if dist>0:
-        #if shortest edit distance > 0, add the new spelling to the df with correct word list and count
-            #make list of the closest words
-            df_closest_dists = df_word_dists.filter(col('dist')==dist)
-            col_actual = df_closest_dists.collect()
-            actual = [x.words for x in col_actual]
-            #add new spelling to the df
-            df_new_mistake = sparksession.createDataFrame([(language_code,word,(dist,1,actual))],COLUMNS)
-            df_mistakes_known = df_mistakes_known.union(df_new_mistake)
-
-    else:
-        #if it is increase the associated count
-        dist = df_word.first()['dist_count_word'][0]
-        count = df_word.first()['dist_count_word'][1] + 1
-        actual = df_word.first()['dist_count_word'][2]
-        df_mistakes_known = df_mistakes_known.withColumn('dist_count_word',when(col("spelling")==word,(dist,count,actual)).otherwise(col('dist_count_word')))
-        
-    #return the edit distance
-    return dist
+    return correct_words
 
 
-#Maps word spell checker over tweet text, then returns number and the percentage of words misspelled
-def spell_check_tweet(language_code, text,sparksession):    
-    #Turn text into rdd with each word and dist to correct spelling
-    #text to rdd of words
-    rdd_tweet_text = sparksession.sparkContext.paralellize(text.split(' ')).map(lambda w: (w,0))
-    #map spell check words
-    rdd_tweet_spell_dist = rdd_tweet_text.map(lambda t: (t[0],spell_check_word(language_code=language_code,word=t[0],sparksession=sparksession)))
-    #count the number of misspelled words, giving the tweet total
-    total_mistakes = rdd_tweet_spell_dist.filter(lambda t: t[1]>0).count()
-    return (total_mistakes,(total_mistakes/rdd_tweet_text.count())*100)
+def spell_check_rdd(correct_words,df_tweets,
+                    max_length_diff=1,
+                    max_edit_dist=3,
+                    min_word_len=4,
+                    n_spellcheck_partitions=40):
+    """
+    Words need to start with the same language to be checked for misspelling
+    """
+    #convert to RDD
+    #flatmap value split(' ') to get separate words
+    #cross product with correct words
+    #add distance
+    #reduce by id,word then only keep lowest distance value
+    #reduce by id to determine number of mispelled words and %
+    #return a df from this rdd
+
+    ### Turn correct_words from dataframes into RDDs
+    rdd_en_words = correct_words['en'].rdd.map(lambda w: (('en', w.words[0]), w.words))
+    rdd_nl_words = correct_words['nl'].rdd.map(lambda w: (('nl', w.words[0]), w.words))
+    # (lang, firstletter), correct_word
+    rdd_correct_words = rdd_en_words.union(rdd_nl_words) \
+            .distinct()  # Word list should not contain duplicates
+
+    debug_print_rdd(rdd_correct_words, 'correct_words')
+
+    ### Convert df_tweets into RDD
+    # tweet_id, (lang, text)
+    rdd_tweets = df_tweets.rdd.map(lambda row: (row.id, (row.lang, row.text)))
+
+    ### Split text into words
+    # tweet_id, (lang, word)
+    rdd_tweet_words = rdd_tweets.flatMapValues(lambda t: zip(repeat(t[0]), t[1].split()))
+
+    # (lang, firstletter), word
+    rdd_tweet_words_langfirst = rdd_tweet_words.map(lambda t: ((t[1][0], t[1][1][0]), t[1][1])) \
+            .distinct()
+    debug_print_rdd(rdd_tweet_words_langfirst, 'tweet_words_langfirst')
+
+    # (lang, word), tweet_id
+    rdd_words_tweetid_only = rdd_tweet_words.map(lambda t: ((t[1][0], t[1][1]), t[0])) \
+            .repartition(n_spellcheck_partitions)
+
+
+    ### Cartesian product with all correct_words for the given language
+    # join: (lang, firstletter), (word, correct_word)
+    # map: (lang, word), correct_word
+    rdd_words_correctproduct = rdd_tweet_words_langfirst.join(rdd_correct_words) \
+            .map(lambda t: ((t[0][0], t[1][0]), t[1][1])) \
+            .repartition(n_spellcheck_partitions)
+
+    def filter_word_length(tweet_word, correct_word):
+        length_diff = abs(len(correct_word) - len(tweet_word)) <= max_length_diff
+        tweet_word_length = min_word_len <= len(tweet_word)
+        return length_diff and tweet_word_length
+
+    ### Don't consider words that are too small
+    rdd_words_correctproduct = rdd_words_correctproduct \
+            .filter(lambda t: filter_word_length(t[0][1], t[1]))
+
+    debug_print_rdd(rdd_words_correctproduct, name='words_correctproduct')
+
+    def filter_word_edit_dist(tweet_word, correct_word, edit_distance):
+        """
+        TODO take into account something like the tweet_word length?
+        Since right now even a 2-letter word will be close enough to all correct 3 letter words
+        """
+        return edit_distance <= max_edit_dist
+
+    ### Calculate all edit distances between words and correct words
+    ### and consider only words with a low edit distance
+    # (lang, word), (correct_word, edit_distance)
+    rdd_spellcheck_dist = rdd_words_correctproduct.map(lambda t: (t[0], (t[1], edit_distance(t[0][1], t[1]))), preservesPartitioning=True) \
+	        .filter(lambda t: filter_word_edit_dist(t[0][1], t[1][0], t[1][1]))
+    debug_print_rdd(rdd_spellcheck_dist, 'spellcheck_dist')
+
+    def seqFunc(u: tuple[set[str], int], v: tuple[str, int]) \
+            -> tuple[set[str], int]:
+        potential_words, p_dist = u
+        word, wdist = v
+        if wdist < p_dist:
+            return ({word}, wdist)
+        elif wdist == p_dist:
+            potential_words.add(word)
+        return u
+    def combFunc(u1: tuple[set[str], int], u2: tuple[set[str], int]) \
+            -> tuple[set[str], int]:
+        words1, dist1 = u1
+        words2, dist2 = u2
+        if dist1 > dist2:
+            return (words2, dist2)
+        if dist1 == dist2:
+            words1.update(words2)
+        return u1
+    rdd_closest_spellings = rdd_spellcheck_dist \
+            .aggregateByKey(zeroValue=(set(), max_edit_dist + 1),
+                            seqFunc=seqFunc,
+                            combFunc=combFunc)
+    # TODO do something with this rdd (save to disk for stats)
+    debug_print_rdd(rdd_closest_spellings, 'closest_spellings', n_take=500)
+
+    ### Calculate % spelling mistakes per tweet
+    # -> convert to boolean (mistake / no mistake)
+    # -> join on rdd_words_tweetid_only
+    # -> map so that tweetid is the key
+    # -> aggregateByKey to calculate (spelling_mistakes, total_words) per tweet
+    # -> Convert back to dataframe, join with input dataframe?
+
+    # (lang, word), is_mistake
+    rdd_mistakes = rdd_closest_spellings.mapValues(lambda t: t[1] > 0)
+    debug_print_rdd(rdd_mistakes, 'mistakes')
+
+    # (lang, word), (is_mistake, tweet_id)
+    rdd_mistakes_with_tweetids = rdd_mistakes.join(rdd_words_tweetid_only)
+    debug_print_rdd(rdd_mistakes_with_tweetids, 'mistakes_with_tweetids')
+
+    # tweet_id, (word, is_mistake)
+    rdd_tweetids_mistakes = rdd_mistakes_with_tweetids.map(lambda t: (t[1][1], (t[0][1], t[1][0])))
+    debug_print_rdd(rdd_tweetids_mistakes, 'tweetids_mistakes')
+
+    # tweetid, (num_words, num_mistakes)
+    def count_words_mistakes(v1, v2):
+        print(v1, v2)
+        return (v1[0] + v2[0], v1[1] + v2[1])
+    rdd_mistake_word_count = rdd_tweetids_mistakes.mapValues(lambda t: (1, int(t[1]))) \
+            .reduceByKey(count_words_mistakes, numPartitions=n_spellcheck_partitions)
+    debug_print_rdd(rdd_mistake_word_count, 'mistake_word_count')
+
+    rdd_mistake_ratio = rdd_mistake_word_count.mapValues(lambda t: t[1] / t[0])
+    debug_print_rdd(rdd_mistake_ratio, 'mistake_ratio')
+
+    # TODO: join mistake_ratios with original tweet dataframe and add as column
+    exit()
+    return df_tweets
     
-#TODO write cleaner
 def text_clean(text):
+    """
+    TODO
+    Lowercase all text, remove all words starting with # or @,
+    remove URLs, strip punctuation.
+    Also apply the same text transformations to the dictionary words!
+    """
     cleaned_text = text
     return cleaned_text
 
 def main(sparksession,df_filtered_tweets):
-    #initialise mistakes log
-    get_correct_wordlists(sparksession)
+    #initialise the correct word lists
+    correct_words = get_correct_wordlists(sparksession)
+    #define udfs for cleaning an spell checking tweets
+    cleaner = udf(lambda t: text_clean(t),StringType())
+    df_cleaned_tweets = df_filtered_tweets.withColumn('clean_text',cleaner("text"))
+
+    spellmistakes = spell_check_rdd(correct_words, df_cleaned_tweets)
+    exit()
+    
+
+
+   
+    """
+    tweet_spell_udf = udf(lambda l,t:spell_check_tweet(l,t, correct_words),StructType([StructField('0',IntegerType()),StructField('1',DoubleType())]))
     # clean text of tweets
-    df_cleaned_tweets = df_filtered_tweets.withColumn('clean_text',text_clean(col('text')))
+    df_cleaned_tweets = df_filtered_tweets.withColumn('clean_text',cleaner("text"))
     # map spell checker for tweets over all tweets
-    df_checked_tweets = df_cleaned_tweets.withColumn('mistakes_percent',spell_check_tweet(col('clean_text')))
+    df_checked_tweets = df_cleaned_tweets.withColumn('mistakes_percent',tweet_spell_udf("lang","clean_text"))
     # reformat checked tweets into desired output
-    df_formatted_tweets = df_checked_tweets.withColumn(
+    df_formatted_tweets = df_checked_tweets.select(
 		    col('user_id'),
 		    col('username'),
 		    col('id').alias('tweet_id'),
-		    col('mistakes_percent').getItem(0).alias('spelling_mistakes'),
-		    col('mistakes_percent').getItem(1).alias('precentage_wrong'),
+		    col('mistakes_percent')['0'].alias('spelling_mistakes'),
+		    col('mistakes_percent')['1'].alias('precentage_wrong'),
 		    col('ts'),
 		    col('hour'),
 		    col('minute'),
@@ -139,9 +243,9 @@ def main(sparksession,df_filtered_tweets):
 		    col('lang')
 		    )
     df_formatted_tweets.show()
-    df_mistakes_known.show()
     exit()
-    return df_formatted_tweets, df_mistakes_known
+    return df_formatted_tweets
+    """
 
 #expected output df structure:
 # ('user_id', 

@@ -2,10 +2,12 @@ import load_twitter
 import filter_tweets
 import process
 import visualise_analyse
+import os
 
 from pyspark.sql import SparkSession
 
-spark = SparkSession.builder.getOrCreate()
+os.environ['PYSPARK_PYTHON'] = './venv/bin/python'
+spark = SparkSession.builder.config('spark.archives', 'pyspark_venv.tar.gz#venv').getOrCreate()
 # Set loglevel to WARN to reduce spam
 spark.sparkContext.setLogLevel('WARN')
 
@@ -24,6 +26,7 @@ print('Filtering tweets')
 df_filtered = filter_tweets.main(spark,df_loaded)
 
 #process the filtered data
+print('Processing tweet text')
 df_processed, df_mistakes = process.main(spark,df_filtered)
 
 #visualise results
