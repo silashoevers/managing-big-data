@@ -192,12 +192,12 @@ def spell_check_rdd(correct_words,df_tweets,
             .reduceByKey(count_words_mistakes, numPartitions=n_spellcheck_partitions)
     debug_print_rdd(rdd_mistake_word_count, 'mistake_word_count')
 
-    rdd_mistake_ratio = rdd_mistake_word_count.mapValues(lambda t: t[1] / t[0])
-    debug_print_rdd(rdd_mistake_ratio, 'mistake_ratio')
+    df_mistake_word_count = rdd_mistake_word_count.map(lambda t: (t[0], *t[1])) \
+            .toDF(['id', 'num_words', 'num_mistakes']) \
+            .withColumn('mistake_ratio', col('num_mistakes') / col('num_words'))
+    df_mistake_word_count.show()
 
-    # TODO: join mistake_ratios with original tweet dataframe and add as column
-    exit()
-    return df_tweets
+    return df_tweets.join(df_mistake_word_count, on='id').withColumnRenamed('id', 'tweet_id')
     
 def text_clean(text):
     """
@@ -216,43 +216,20 @@ def main(sparksession,df_filtered_tweets):
     cleaner = udf(lambda t: text_clean(t),StringType())
     df_cleaned_tweets = df_filtered_tweets.withColumn('clean_text',cleaner("text"))
 
-    spellmistakes = spell_check_rdd(correct_words, df_cleaned_tweets)
-    exit()
+    df_spell_mistakes = spell_check_rdd(correct_words, df_cleaned_tweets)
+    df_spell_mistakes.show()
+
+    df_mistakes_per_user = mistakes_per_user(df_spell_mistakes)
+    return df_mistakes_per_user
     
-
-
-   
-    """
-    tweet_spell_udf = udf(lambda l,t:spell_check_tweet(l,t, correct_words),StructType([StructField('0',IntegerType()),StructField('1',DoubleType())]))
-    # clean text of tweets
-    df_cleaned_tweets = df_filtered_tweets.withColumn('clean_text',cleaner("text"))
-    # map spell checker for tweets over all tweets
-    df_checked_tweets = df_cleaned_tweets.withColumn('mistakes_percent',tweet_spell_udf("lang","clean_text"))
-    # reformat checked tweets into desired output
-    df_formatted_tweets = df_checked_tweets.select(
-		    col('user_id'),
-		    col('username'),
-		    col('id').alias('tweet_id'),
-		    col('mistakes_percent')['0'].alias('spelling_mistakes'),
-		    col('mistakes_percent')['1'].alias('precentage_wrong'),
-		    col('ts'),
-		    col('hour'),
-		    col('minute'),
-		    col('second'),
-		    col('time_bucket'),
-		    col('lang')
-		    )
-    df_formatted_tweets.show()
-    exit()
-    return df_formatted_tweets
-    """
 
 #expected output df structure:
 # ('user_id', 
 #   'username', 
 #   'tweet_id',
-#   'spelling_mistakes',
-#   'percentage_wrong',
+#   'num_words',
+#   'num_mistakes',
+#   'mistake_ratio',
 #   'ts'
 #   'hour'
 #   'minute'
