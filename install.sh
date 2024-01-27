@@ -14,7 +14,7 @@ source venv/bin/activate # activate venv
 set -x # @echo on
 
 # Install requirements
-pip install -U pip pandas numpy pyarrow nltk pyspark-pandas venv-pack pyspark==3.4.1
+pip install -U pip pandas numpy pyarrow nltk pyspark-pandas venv-pack pyspark==3.4.1 matplotlib scipy
 
 # Put venv in archive (passed to executors with "spark-submit --archives [...]")
 venv-pack -o pyspark_venv.tar.gz
