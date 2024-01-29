@@ -12,23 +12,31 @@ spark = SparkSession.builder.config('spark.archives', 'pyspark_venv.tar.gz#venv'
 spark.sparkContext.setLogLevel('WARN')
 
 #source files to use
-PATHS = '/data/doina/Twitter-Archive.org/2017-01/01/*/*.json.bz2'
+PATHS = ['/data/doina/Twitter-Archive.org/2017-01/01/*/*.json.bz2', '/data/doina/Twitter-Archive.org/2017-01/02/*/*.json.bz2']
+
+RESULTS = [f'/user/{os.getlogin()}/result/df_processed_2017_01_01', f'/user/{os.getlogin()}/result/df_processed_2017_01_02']
 
 #output folder path
-OUTPUT = '/project' 
+OUTPUT = '/output' 
 
-#load the paths
-print(f'Loading tweet data from {PATHS}')
-df_loaded = load_twitter.get_relevant_tweets_for_day(spark, PATHS)
+for path, result in zip(PATHS, RESULTS):
 
-#filter users we need
-print('Filtering tweets')
-df_filtered = filter_tweets.main(spark,df_loaded)
+    #load the paths
+    print(f'Loading tweet data from {path}')
+    df_loaded = load_twitter.get_relevant_tweets_for_day(spark, path)
 
-#process the filtered data
-print('Processing tweet text')
-df_processed, df_mistakes = process.main(spark,df_filtered)
+    #filter users we need
+    print('Filtering tweets')
+    df_filtered = filter_tweets.main(spark,df_loaded)
 
-#visualise results
-visualise_analyse.main(spark,df_processed,OUTPUT)
+    #process the filtered data
+    print('Processing tweet text')
+    df_processed, df_mistakes = process.main(spark,df_filtered)
+
+    # TEMP Store results on HDFS
+    df_processed.write.parquet(result, mode="overwrite")
+
+# TEMP Load results
+
+visualise_analyse.main(spark,RESULTS,OUTPUT)
 
