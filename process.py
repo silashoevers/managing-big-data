@@ -32,7 +32,7 @@ import re
 import string
 import pandas as pd
 
-DEBUG = True
+DEBUG = False
 
 def print_time():
     print(datetime.now().strftime('%H:%M:%S'))
