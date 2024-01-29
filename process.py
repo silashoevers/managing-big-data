@@ -88,7 +88,7 @@ def spell_check_rdd(correct_words,df_tweets,
                     max_length_diff=1,
                     max_edit_dist=3,
                     min_word_len=4,
-                    n_spellcheck_partitions=40):
+                    n_spellcheck_partitions=80):
     """
     Words need to start with the same letter to be checked for misspelling
     """
