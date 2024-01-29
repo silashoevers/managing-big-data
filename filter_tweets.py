@@ -57,7 +57,7 @@ def filter_enough_time_windows(night: pd.Series, morning: pd.Series, afternoon: 
 
 
 
-def filter_user_tweeting_enough(tweets, min_num_windows = 3):
+def filter_user_tweeting_enough(tweets, min_num_windows = 2):
     user_timewindow_counts = tweets.groupBy('user_id').agg(filter_enough_time_windows(tweets.night, tweets.morning, tweets.afternoon, tweets.evening).alias('time_window_count'))
 
     user_timewindow_counts = user_timewindow_counts.filter(col('time_window_count') >= min_num_windows)
