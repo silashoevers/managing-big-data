@@ -17,6 +17,7 @@ set -x # @echo on
 pip install -U pip pandas numpy pyarrow nltk pyspark-pandas venv-pack pyspark==3.4.1 matplotlib scipy
 
 # Put venv in archive (passed to executors with "spark-submit --archives [...]")
+rm -f pyspark_venv.tar.gz
 venv-pack -o pyspark_venv.tar.gz
 
 # Install English wordlist
@@ -26,6 +27,7 @@ python3 -c "import nltk; nltk.download('words')"
 # Install Dutch wordlist
 hdfs dfs -mkdir -p $WORDLIST_DIR
 if hdfs dfs -ls $WORDLIST_DIR/nl-words.txt; then
+    :
 else
 	curl https://raw.githubusercontent.com/OpenTaal/opentaal-wordlist/master/wordlist.txt | \
 		hdfs dfs -put - $WORDLIST_DIR/nl-words.txt
