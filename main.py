@@ -11,14 +11,19 @@ spark = SparkSession.builder.config('spark.archives', 'pyspark_venv.tar.gz#venv'
 # Set loglevel to WARN to reduce spam
 spark.sparkContext.setLogLevel('WARN')
 
-#source files to use
-PATHS = ['/data/doina/Twitter-Archive.org/2017-01/01/*/*.json.bz2', '/data/doina/Twitter-Archive.org/2017-01/02/*/*.json.bz2']
+# Where to load data
+path_prefix='/data/doina/Twitter-Archive.org/2017-01/'
+path_suffix = '/*/*.json.bz2'
 
-RESULTS = [f'/user/{os.getlogin()}/result/df_processed_2017_01_01', f'/user/{os.getlogin()}/result/df_processed_2017_01_02']
+# Where to store intermediate results
+results_dir_prefix = f'/user/{os.getlogin()}/result/df_processed_2017_01_'
+
+days = ['0' + str(i) for i in range(1, 8)]
+PATHS = [path_prefix + d + path_suffix for d in days]
+RESULTS = [results_dir_prefix + d for d in days]
 
 #output folder path
 OUTPUT = '/output' 
-
 
 for path, result in zip(PATHS, RESULTS):
 
@@ -43,6 +48,7 @@ for path, result in zip(PATHS, RESULTS):
     df_processed.write.parquet(result, mode="overwrite")
 
 # TEMP Load results
+exit()  # TODO: rewrite visualise_analyse for multiple days
 
 visualise_analyse.main(spark,RESULTS,OUTPUT)
 
