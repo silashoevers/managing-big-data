@@ -20,7 +20,7 @@ path_suffix = '/*/*.json.bz2'
 results_dir_prefix = f'/user/{os.getlogin()}/result/df_processed_2017_01_'
 mistakes_dir_prefix = f'/user/{os.getlogin()}/result/df_mistakes_2017_01_'
 
-days = ['0' + str(i) for i in range(1, 8)]
+days = [f'{i:02d}' for i in range(1, 8)]
 PATHS = [path_prefix + d + path_suffix for d in days]
 RESULTS = [results_dir_prefix + d for d in days]
 
