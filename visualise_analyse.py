@@ -87,7 +87,7 @@ def main(sparksession,resultPaths,outputPathFolder):
         # Based on this stackoverflow thread: https://stackoverflow.com/questions/74728180/union-list-of-pyspark-dataframes
         dfs_unioned = reduce(pyspark.sql.dataframe.DataFrame.unionByName, all_days_same_buckets)
         diff = [row[f'avg_mistake_ratio_{bucket_1}'] - row[f'avg_mistake_ratio_{bucket_2}'] for row in dfs_unioned.collect()]
-        res = wilcoxon(diff)
+        res = wilcoxon(diff, alternative='less')
         print(f"Statistics for {bucket_1} and {bucket_2} are {res.statistic} & {res.pvalue} with a total of {dfs_unioned.count()} rows considered")
 
     return
