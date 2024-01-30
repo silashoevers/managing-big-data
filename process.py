@@ -215,7 +215,6 @@ def spell_check_rdd(correct_words,df_tweets,
     df_mistake_word_count = rdd_mistake_word_count.map(lambda t: (t[0], *t[1])) \
             .toDF(['id', 'num_words', 'num_mistakes']) \
             .withColumn('mistake_ratio', col('num_mistakes') / col('num_words'))
-    df_mistake_word_count.show()
 
     df_tweets_processed = df_tweets.join(df_mistake_word_count, on='id').withColumnRenamed('id', 'tweet_id')
     return df_tweets_processed, df_mistakes
@@ -224,8 +223,6 @@ def main(sparksession,df_filtered_tweets):
     correct_words = get_correct_wordlists(sparksession)
     df_cleaned_tweets = df_filtered_tweets.withColumn('clean_text', text_clean("text"))
     df_tweets_processed, df_mistakes = spell_check_rdd(correct_words, df_cleaned_tweets)
-    df_tweets_processed.show()
-    df_mistakes.show()
     return df_tweets_processed, df_mistakes
     
 

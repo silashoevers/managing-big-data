@@ -4,6 +4,7 @@ import process
 import visualise_analyse
 import os
 
+import pandas as pd
 from pyspark.sql import SparkSession
 
 os.environ['PYSPARK_PYTHON'] = './venv/bin/python'
@@ -17,15 +18,22 @@ path_suffix = '/*/*.json.bz2'
 
 # Where to store intermediate results
 results_dir_prefix = f'/user/{os.getlogin()}/result/df_processed_2017_01_'
+mistakes_dir_prefix = f'/user/{os.getlogin()}/result/df_mistakes_2017_01_'
 
 days = ['0' + str(i) for i in range(1, 8)]
 PATHS = [path_prefix + d + path_suffix for d in days]
 RESULTS = [results_dir_prefix + d for d in days]
 
 #output folder path
-OUTPUT = '/output' 
+OUTPUT = './output' 
+os.makedirs(OUTPUT, exist_ok=True)
 
-for path, result in zip(PATHS, RESULTS):
+tweet_counts = []
+
+for path, result, day in zip(PATHS, RESULTS, days):
+
+    # path for saving df_mistakes
+    mistake_dir = mistakes_dir_prefix + day
 
     #load the paths
     print('>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>')
@@ -34,19 +42,33 @@ for path, result in zip(PATHS, RESULTS):
 
     #filter users we need
     print('Filtering tweets')
-    print(f'Number of tweets before filtering: {df_loaded.count()}')
+    num_tweets_prefilter = df_loaded.count()
+    print(f'Number of tweets before filtering: {num_tweets_prefilter}')
     df_filtered = filter_tweets.main(spark,df_loaded)
-    print(f'Number of tweets after filtering: {df_filtered.count()}')
+    num_tweets_postfilter = df_filtered.count()
+    print(f'Number of tweets after filtering: {num_tweets_postfilter}')
 
     #process the filtered data
     print('Processing tweet text')
     df_processed, df_mistakes = process.main(spark,df_filtered)
-    print(f'Number of tweets after processing: {df_processed.count()}')
+    num_tweets_processed = df_processed.count()
+    print(f'Number of tweets after processing: {num_tweets_processed}')
 
-    # TEMP Store results on HDFS
+    ## TEMP Store results on HDFS
     print(f'Storing intermediate results in {result}')
     df_processed.write.parquet(result, mode="overwrite")
+    print(f'Storing df_mistakes in {mistake_dir}')
+    df_mistakes.write.parquet(mistake_dir, mode="overwrite")
 
-# TEMP Load results
+    tweet_counts.append(dict(day=day,
+                             prefilter=num_tweets_prefilter,
+                             postfilter=num_tweets_postfilter,
+                             processed=num_tweets_processed))
+
+# Save tweet counts as dataframe
+df_tweet_counts = pd.DataFrame(tweet_counts)
+print(df_tweet_counts)
+df_tweet_counts.to_csv(OUTPUT + 'tweet_counts.csv')
+
 visualise_analyse.main(spark,RESULTS,OUTPUT)
 
