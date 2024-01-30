@@ -18,7 +18,7 @@ pip install -U pip pandas numpy pyarrow nltk pyspark-pandas venv-pack pyspark==3
 
 # Put venv in archive (passed to executors with "spark-submit --archives [...]")
 rm -f pyspark_venv.tar.gz
-venv-pack -o pyspark_venv.tar.gz
+venv-pack --compress-level 9 -o pyspark_venv.tar.gz
 
 # Install English wordlist
 WORDLIST_DIR=/user/$USER/wordlists
