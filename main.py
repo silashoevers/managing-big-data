@@ -48,7 +48,5 @@ for path, result in zip(PATHS, RESULTS):
     df_processed.write.parquet(result, mode="overwrite")
 
 # TEMP Load results
-exit()  # TODO: rewrite visualise_analyse for multiple days
-
 visualise_analyse.main(spark,RESULTS,OUTPUT)
 

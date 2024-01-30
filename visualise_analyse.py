@@ -21,6 +21,8 @@ def create_df_avg_dict(df_processed_tweets):
     df_night = df_processed_tweets.filter(df_processed_tweets.time_bucket == "night")
 
     df_morning_avg = df_morning.groupBy('user_id').agg(avg('mistake_ratio').alias("avg_mistake_ratio_morning"))
+    # TEMP debugging
+    print(df_morning_avg.count())
     df_afternoon_avg = df_afternoon.groupBy('user_id').agg(avg('mistake_ratio').alias("avg_mistake_ratio_afternoon"))
     df_evening_avg = df_evening.groupBy('user_id').agg(avg('mistake_ratio').alias("avg_mistake_ratio_evening"))
     df_night_avg = df_night.groupBy('user_id').agg(avg('mistake_ratio').alias("avg_mistake_ratio_night"))
